@@ -10,12 +10,14 @@ export type SimCallbacks = {
 
 /**
  * Simula um percurso no sofá: velocidade configurável, passa pelos radares de demo.
+ * `timeScale` acelera o tempo (ex.: 4×) para testar sem esperar minutos.
  */
 export class SimEngine {
   private raf = 0
   private startedAt = 0
   private distanceM = 0
-  private speedKmh = 72
+  private speedKmh = 90
+  private timeScale = 4
   private running = false
   private readonly totalM = pathLengthM(SIM_ROUTE)
 
@@ -29,17 +31,27 @@ export class SimEngine {
     return this.speedKmh
   }
 
+  setTimeScale(v: number): void {
+    this.timeScale = Math.max(1, Math.min(12, v))
+  }
+
+  getTimeScale(): number {
+    return this.timeScale
+  }
+
   start(): void {
     this.stop()
     this.running = true
     this.startedAt = performance.now()
     this.distanceM = 0
-    this.cb.onStatus(`Simulação · ${Math.round(this.speedKmh)} km/h`)
+    this.cb.onStatus(
+      `Simulação · ${Math.round(this.speedKmh)} km/h · ${this.timeScale}×`,
+    )
     let last = performance.now()
 
     const tick = (now: number) => {
       if (!this.running) return
-      const dt = Math.min(0.25, (now - last) / 1000)
+      const dt = Math.min(0.25, ((now - last) / 1000) * this.timeScale)
       last = now
 
       const speedMs = this.speedKmh / 3.6
@@ -62,7 +74,6 @@ export class SimEngine {
       }
 
       const { point, heading } = pointAlongPath(SIM_ROUTE, this.distanceM)
-      // leve oscilação para parecer menos robótico
       const wobble = Math.sin((now - this.startedAt) / 700) * 0.8
       this.cb.onSample({
         lat: point.lat,

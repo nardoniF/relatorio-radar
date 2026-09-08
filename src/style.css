@@ -245,6 +245,8 @@ body {
   display: grid;
   gap: 10px;
   animation: rise 1s 0.12s ease both;
+  position: relative;
+  z-index: 2;
 }
 
 .btn-row {
@@ -264,6 +266,9 @@ button {
   transition: transform 0.15s ease, opacity 0.2s ease, background 0.2s ease;
   -webkit-appearance: none;
   appearance: none;
+  touch-action: manipulation;
+  position: relative;
+  z-index: 1;
 }
 
 button:active:not(:disabled) {

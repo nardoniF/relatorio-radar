@@ -108,8 +108,8 @@ function render(): void {
 
         <div class="sim-panel ${state.mode === 'sim' && !state.report ? 'open' : ''}" id="sim-panel">
           <label>
-            Velocidade da simulação
-            <strong id="sim-speed-label">${sim?.getSpeedKmh() ?? 72} km/h</strong>
+            Velocidade
+            <strong id="sim-speed-label">${sim?.getSpeedKmh() ?? 90} km/h</strong>
           </label>
           <input
             type="range"
@@ -117,7 +117,20 @@ function render(): void {
             min="30"
             max="120"
             step="5"
-            value="${sim?.getSpeedKmh() ?? 72}"
+            value="${sim?.getSpeedKmh() ?? 90}"
+            ${running ? '' : 'disabled'}
+          />
+          <label>
+            Aceleração do tempo
+            <strong id="sim-scale-label">${sim?.getTimeScale() ?? 4}×</strong>
+          </label>
+          <input
+            type="range"
+            id="sim-scale"
+            min="1"
+            max="10"
+            step="1"
+            value="${sim?.getTimeScale() ?? 4}"
             ${running ? '' : 'disabled'}
           />
         </div>
@@ -213,12 +226,24 @@ function bindEvents(): void {
     sim?.setSpeedKmh(v)
     const label = document.getElementById('sim-speed-label')
     if (label) label.textContent = `${v} km/h`
-    if (state.mode === 'sim') {
-      state.status = `Simulação · ${v} km/h`
-      const statusEl = document.querySelector('.status-line')
-      if (statusEl && !state.error) statusEl.textContent = state.status
-    }
+    syncSimStatus()
   })
+
+  const scale = document.getElementById('sim-scale') as HTMLInputElement | null
+  scale?.addEventListener('input', () => {
+    const v = Number(scale.value)
+    sim?.setTimeScale(v)
+    const label = document.getElementById('sim-scale-label')
+    if (label) label.textContent = `${v}×`
+    syncSimStatus()
+  })
+}
+
+function syncSimStatus(): void {
+  if (state.mode !== 'sim' || !sim) return
+  state.status = `Simulação · ${sim.getSpeedKmh()} km/h · ${sim.getTimeScale()}×`
+  const statusEl = document.querySelector('.status-line')
+  if (statusEl && !state.error) statusEl.textContent = state.status
 }
 
 function stopEngines(): void {
@@ -334,7 +359,7 @@ function startSim(): void {
   state.alert = null
   state.report = null
   state.error = null
-  state.status = 'Simulação · 72 km/h'
+  state.status = 'Simulação · 90 km/h · 4×'
 
   sim = new SimEngine({
     onSample,
@@ -349,7 +374,8 @@ function startSim(): void {
       if (el) el.textContent = state.status
     },
   })
-  sim.setSpeedKmh(72)
+  sim.setSpeedKmh(90)
+  sim.setTimeScale(4)
   render()
   sim.start()
 }
