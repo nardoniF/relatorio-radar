@@ -4,3 +4,13 @@ dist
 *.local
 .vite
 certs
+.env
+backend/node_modules
+backend/dist
+backend/.env
+ios/.build
+ios/**/.build
+*.xcuserstate
+xcuserdata
+DerivedData
+.swiftpm

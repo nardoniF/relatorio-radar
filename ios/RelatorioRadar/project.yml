@@ -1,0 +1,62 @@
+name: RelatorioRadar
+options:
+  bundleIdPrefix: br.relatorioradar
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+  xcodeVersion: "15.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1"
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+
+packages:
+  RelatorioRadarCore:
+    path: .
+
+targets:
+  RelatorioRadar:
+    type: application
+    platform: iOS
+    sources:
+      - path: RelatorioRadar
+      - path: App
+      - path: Fixtures
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: br.relatorioradar.app
+        INFOPLIST_FILE: RelatorioRadar/Info.plist
+        PRODUCT_NAME: RelatorioRadar
+        GENERATE_INFOPLIST_FILE: false
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: "1.0"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: "" # Preencha no Xcode
+        SUPPORTS_MACCATALYST: false
+    dependencies:
+      - package: RelatorioRadarCore
+        product: RelatorioRadarCore
+    info:
+      path: RelatorioRadar/Info.plist
+      properties:
+        UIBackgroundModes: [location]
+    entitlements:
+      path: RelatorioRadar/RelatorioRadar.entitlements
+
+  RelatorioRadarCoreTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Sources/RelatorioRadarCoreTests
+    dependencies:
+      - package: RelatorioRadarCore
+        product: RelatorioRadarCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: br.relatorioradar.tests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_HOST: ""

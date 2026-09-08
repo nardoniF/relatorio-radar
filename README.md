@@ -1,38 +1,62 @@
 # Relatório Radar
 
-Piloto web HTTPS de viagem: GPS, alerta de radares e relatório ao **Finalizar** com os radares passados acima do limite.
+Motor de **compliance viário em tempo real** para iPhone: GPS, segmento/sentido, limite, radares, alertas, possíveis infrações (estimativa CTB) e relatório com mapa — **sem exigir destino**.
+
+Fluxo principal:
+
+**ABRIR → INICIAR VIAGEM → DIRIGIR → FINALIZAR → RELATÓRIO**
 
 Sem relação com Sensor Tattoo Fix.
 
-## O que faz
+## Repositório
 
-- **GPS real** — `watchPosition` no Safari (exige HTTPS + permissão)
-- **Simular no sofá** — percurso demo com velocidade ajustável, sem sair de casa
-- **Alerta de radar** — aviso por proximidade (longe / perto / iminente)
-- **Finalizar** — relatório dos radares passados, destacando os acima do limite
-- **Copiar relatório** — texto pronto para colar
+| Pasta | Conteúdo |
+| --- | --- |
+| `ios/` | App nativo SwiftUI + `RelatorioRadarCore` (engines) |
+| `backend/` | API REST + PostGIS + `fine_rules` + providers |
+| `docs/` | Arquitetura, API, deploy, privacidade, **comparação HERE/Mapbox** |
+| raiz (`src/`, …) | Piloto web HTTPS (Safari) |
 
-## Rodar no iPhone (Safari)
+## Decisão de provedor
+
+Ver [`docs/PROVIDER_COMPARISON.md`](docs/PROVIDER_COMPARISON.md).
+
+**Preliminar:** HERE (matching + limites + safety cameras), com `DemoProvider` até haver contrato. Chaves **somente no backend**.
+
+## MVP
+
+- Iniciar / finalizar viagem (manual)
+- Core Location + background
+- Map matching (janelas) + limite por segmento
+- Radares com filtro de sentido
+- Alertas (voz/haptic preparados)
+- SpeedFilter + ViolationEngine (estimativa)
+- Relatório + mapa + histórico
+- Custo combustível
+- Simulador `trip.json`
+
+Fora do MVP: modo automático completo, CarPlay UI, pedágios reais, Waze como fonte de dados, rede social.
+
+## Linguagem legal
+
+Sempre **estimativa / possível infração**. Nunca “você recebeu uma multa”.
+
+## Quick start
 
 ```bash
-npm install
-npm run dev
+# Backend
+cd backend && npm install && npm test && npm run dev
+
+# Piloto web
+npm install && npm run dev
+
+# iOS — abrir ios/ no Xcode (macOS)
 ```
 
-O Vite sobe com **HTTPS** (`vite-plugin-mkcert`) e `host: true`.
-
-1. No Mac/PC, anote o endereço mostrado (ex.: `https://192.168.x.x:5173`)
-2. No iPhone (mesma Wi‑Fi), abra esse URL no Safari
-3. Aceite o certificado local se o Safari pedir
-4. Toque em **GPS real** e permita localização — ou use **Simular no sofá**
-
-Build estático:
+## Piloto web (Safari)
 
 ```bash
-npm run build
-npm run preview
+npm install && npm run dev
 ```
 
-## Stack
-
-Vite + TypeScript, sem backend. Radares de demo em `src/data/radars.ts` (trecho fictício SP para a simulação).
+HTTPS local (`vite-plugin-mkcert`). No iPhone (mesma Wi‑Fi): abra `https://<IP>:5173`.
