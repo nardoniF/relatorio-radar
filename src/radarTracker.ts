@@ -26,6 +26,23 @@ export class RadarTracker {
     return [...this.passages]
   }
 
+  /** Próximos radares ainda não passados, ordenados por distância. */
+  upcoming(
+    sample: PositionSample,
+    limit = 3,
+  ): Array<{ radar: Radar; distanceM: number }> {
+    const passed = new Set(this.passages.map((p) => p.radar.id))
+    // Também trata “ainda dentro do pass radius após registered” via approaches que já saíram
+    return this.radars
+      .filter((r) => !passed.has(r.id))
+      .map((radar) => ({
+        radar,
+        distanceM: haversineM(sample, radar),
+      }))
+      .sort((a, b) => a.distanceM - b.distanceM)
+      .slice(0, limit)
+  }
+
   getAlert(): RadarAlert | null {
     return this.lastAlert
   }

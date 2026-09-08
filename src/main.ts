@@ -1,11 +1,11 @@
 import './style.css'
 import {
+  armVoiceOnUserGesture,
   getAlertDistanceM,
   handleRadarAlertAudio,
   resetAlertAudio,
   setAlertDistanceM,
   testAlertNow,
-  unlockAudio,
 } from './alerts'
 import { RADARS } from './data/radars'
 import { formatClock, formatDuration, formatKmh } from './geo'
@@ -15,8 +15,8 @@ import { buildReport, reportToText } from './report'
 import { SimEngine } from './sim'
 import type {
   PositionSample,
+  Radar,
   RadarAlert,
-  RadarPassage,
   TripMode,
   TripReport,
 } from './types'
@@ -70,12 +70,16 @@ function render(): void {
   const showReport = Boolean(state.report)
   const inAlertZone =
     state.alert != null && state.alert.distanceM <= state.alertDistanceM
+  const upcoming =
+    state.lastSample != null
+      ? tracker.upcoming(state.lastSample, 3)
+      : RADARS.slice(0, 3).map((radar) => ({ radar, distanceM: NaN }))
 
   app.innerHTML = `
     <div class="shell ${showReport ? 'report-open' : ''}">
       <header class="brand live-only">
         <h1>Relatório <span>Radar</span></h1>
-        <p>O círculo mostra o <strong>limite</strong>. Sua velocidade fica pequena em cima.</p>
+        <p>Círculo = limite. Em cima = sua velocidade. Ao lado = próximos 3 radares.</p>
       </header>
 
       <section class="speed-stage live-only" aria-live="polite">
@@ -85,21 +89,28 @@ function render(): void {
           <span class="my-speed-unit">km/h</span>
         </div>
 
-        <div class="speed-ring ring-${ring}" id="speed-ring">
-          <div class="speed-inner">
-            <div class="limit-label">${limit != null ? 'Baixe para' : 'Limite'}</div>
-            <div class="speed-value" id="limit-value">${limit != null ? formatKmh(limit) : '—'}</div>
-            <div class="speed-unit">km/h</div>
-            <div class="dist-line" id="dist-line">
-              ${
-                dist != null
-                  ? inAlertZone
-                    ? `Radar a ${dist} m`
-                    : `Radar a ${dist} m · alerta em ${state.alertDistanceM} m`
-                  : 'Sem radar próximo'
-              }
+        <div class="stage-row">
+          <div class="speed-ring ring-${ring}" id="speed-ring">
+            <div class="speed-inner">
+              <div class="limit-label">${limit != null ? 'Baixe para' : 'Limite'}</div>
+              <div class="speed-value" id="limit-value">${limit != null ? formatKmh(limit) : '—'}</div>
+              <div class="speed-unit">km/h</div>
+              <div class="dist-line" id="dist-line">
+                ${
+                  dist != null
+                    ? inAlertZone
+                      ? `Radar a ${dist} m`
+                      : `Radar a ${dist} m · alerta em ${state.alertDistanceM} m`
+                    : 'Sem radar próximo'
+                }
+              </div>
             </div>
           </div>
+
+          <aside class="upcoming" id="upcoming-list">
+            <div class="upcoming-title">Próximos</div>
+            ${renderUpcoming(upcoming)}
+          </aside>
         </div>
       </section>
 
@@ -128,7 +139,7 @@ function render(): void {
             <strong id="alert-dist-label">${state.alertDistanceM} m</strong>
           </label>
           <input type="range" id="alert-dist" min="100" max="800" step="50" value="${state.alertDistanceM}" />
-          <p class="hint">Padrão 300 m. A voz diz: “Baixa a velocidade para X”.</p>
+          <p class="hint">Padrão 300 m. Ao iniciar, o app libera a voz (diz “Monitoramento iniciado”).</p>
         </div>
 
         <div class="btn-row">
@@ -163,6 +174,30 @@ function render(): void {
   `
 
   bindEvents()
+}
+
+function renderUpcoming(
+  items: Array<{ radar: Radar; distanceM: number }>,
+): string {
+  if (items.length === 0) {
+    return `<div class="upcoming-empty">Nenhum à frente</div>`
+  }
+  return items
+    .map((item, i) => {
+      const d = Number.isFinite(item.distanceM)
+        ? `${Math.round(item.distanceM)} m`
+        : '—'
+      return `
+        <div class="upcoming-item" data-radar="${item.radar.id}">
+          <div class="upcoming-rank">${i + 1}</div>
+          <div class="upcoming-body">
+            <strong>${item.radar.limitKmh}</strong>
+            <span>${item.radar.name.replace(/^Radar\s+/i, '')}</span>
+          </div>
+          <div class="upcoming-dist" data-dist="${item.radar.id}">${d}</div>
+        </div>`
+    })
+    .join('')
 }
 
 function renderReport(report: TripReport): string {
@@ -334,10 +369,17 @@ function updateHud(sample: PositionSample, alert: RadarAlert | null): void {
            <span>Monitorando…</span>`
     }
   }
+
+  const list = document.getElementById('upcoming-list')
+  if (list) {
+    const upcoming = tracker.upcoming(sample, 3)
+    list.innerHTML = `<div class="upcoming-title">Próximos</div>${renderUpcoming(upcoming)}`
+  }
 }
 
-function startGps(): void {
-  void unlockAudio()
+async function startGps(): Promise<void> {
+  // Mesmo gesto do toque — libera voz espontânea no iPhone
+  await armVoiceOnUserGesture()
   resetAlertAudio()
   beginTrip('gps')
   gps = new GpsEngine({
@@ -364,8 +406,8 @@ function startGps(): void {
   gps.start()
 }
 
-function startSim(): void {
-  void unlockAudio()
+async function startSim(): Promise<void> {
+  await armVoiceOnUserGesture()
   resetAlertAudio()
   stopEngines()
   tracker.reset()
@@ -377,7 +419,7 @@ function startSim(): void {
   state.alert = null
   state.report = null
   state.error = null
-  state.status = 'Simulação · áudio liberado'
+  state.status = 'Simulação · voz liberada'
   sim = new SimEngine({
     onSample,
     onStatus: (message) => {
