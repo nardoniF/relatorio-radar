@@ -2,6 +2,7 @@ import './style.css'
 import {
   handleRadarAlertAudio,
   resetAlertAudio,
+  testAlertNow,
   unlockAudio,
 } from './alerts'
 import { RADARS } from './data/radars'
@@ -111,6 +112,12 @@ function render(): void {
           </button>
         </div>
 
+        <div class="btn-row">
+          <button type="button" class="btn-secondary" id="btn-test-sound">
+            Testar sirene + voz
+          </button>
+        </div>
+
         <div class="sim-panel ${state.mode === 'sim' && !state.report ? 'open' : ''}" id="sim-panel">
           <label>
             Velocidade
@@ -150,6 +157,7 @@ function render(): void {
       <p class="status-line live-only ${state.error ? 'error' : ''}">
         ${state.error ?? state.status}
       </p>
+      <p class="status-line live-only" style="opacity:0.55;font-size:0.75rem">áudio v3 · se não ouvir, toque em Testar sirene + voz</p>
 
       <section class="report ${showReport ? 'open' : ''}" aria-live="polite">
         ${showReport && state.report ? renderReport(state.report) : ''}
@@ -224,6 +232,14 @@ function bindEvents(): void {
   document.getElementById('btn-finish')?.addEventListener('click', finalizeTrip)
   document.getElementById('btn-new')?.addEventListener('click', resetTrip)
   document.getElementById('btn-copy')?.addEventListener('click', copyReport)
+  document.getElementById('btn-test-sound')?.addEventListener('click', () => {
+    void testAlertNow(60).then(() => {
+      showToast('Sirene + voz disparados')
+      state.status = 'Áudio OK — agora use Simular no sofá'
+      const el = document.querySelector('.status-line')
+      if (el && !state.error) el.textContent = state.status
+    })
+  })
 
   const range = document.getElementById('sim-speed') as HTMLInputElement | null
   range?.addEventListener('input', () => {
