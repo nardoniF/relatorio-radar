@@ -9,6 +9,13 @@ import {
   testAlertNow,
 } from './alerts'
 import { RADARS } from './data/radars'
+import {
+  getReportEmail,
+  isValidEmail,
+  openReportEmail,
+  setReportEmail,
+  shareOrEmailReport,
+} from './email'
 import { formatClock, formatDuration, formatKmh } from './geo'
 import { GpsEngine } from './gps'
 import { RadarTracker } from './radarTracker'
@@ -141,7 +148,19 @@ function render(): void {
             <strong id="alert-dist-label">${state.alertDistanceM} m</strong>
           </label>
           <input type="range" id="alert-dist" min="100" max="800" step="50" value="${state.alertDistanceM}" />
-          <p class="hint">Padrão 300 m. Ao iniciar, o app libera a voz (diz “Monitoramento iniciado”).</p>
+          <label class="email-label" for="report-email">
+            E-mail do relatório
+          </label>
+          <input
+            type="email"
+            id="report-email"
+            class="email-input"
+            placeholder="seu@email.com"
+            value="${escapeAttr(getReportEmail())}"
+            autocomplete="email"
+            inputmode="email"
+          />
+          <p class="hint">Ao finalizar, o Mail abre com o relatório. Confira e toque em Enviar.</p>
         </div>
 
         <div class="btn-row">
@@ -233,10 +252,22 @@ function renderReport(report: TripReport): string {
       }
     </ul>
     <div class="btn-row">
+      <button type="button" class="btn-primary" id="btn-email">Enviar por e-mail</button>
       <button type="button" class="btn-secondary" id="btn-copy">Copiar relatório</button>
+    </div>
+    <div class="btn-row">
+      <button type="button" class="btn-secondary" id="btn-share">Compartilhar</button>
       <button type="button" class="btn-primary" id="btn-new">Nova viagem</button>
     </div>
   `
+}
+
+function escapeAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
 }
 
 function bindEvents(): void {
@@ -245,8 +276,20 @@ function bindEvents(): void {
   document.getElementById('btn-finish')?.addEventListener('click', finalizeTrip)
   document.getElementById('btn-new')?.addEventListener('click', resetTrip)
   document.getElementById('btn-copy')?.addEventListener('click', copyReport)
+  document.getElementById('btn-email')?.addEventListener('click', () => sendReportEmail())
+  document.getElementById('btn-share')?.addEventListener('click', () => {
+    void shareReport()
+  })
   document.getElementById('btn-test-sound')?.addEventListener('click', () => {
     void testAlertNow(60).then(() => showToast('Falou: Baixa a velocidade para 60'))
+  })
+
+  const emailInput = document.getElementById('report-email') as HTMLInputElement | null
+  emailInput?.addEventListener('change', () => {
+    setReportEmail(emailInput.value)
+  })
+  emailInput?.addEventListener('blur', () => {
+    setReportEmail(emailInput.value)
   })
 
   const dist = document.getElementById('alert-dist') as HTMLInputElement | null
@@ -446,6 +489,11 @@ async function startSim(): Promise<void> {
 
 function finalizeTrip(): void {
   if (state.mode === 'idle' || !state.startedAt) return
+
+  // Salva e-mail digitado antes de re-render (campo some no relatório)
+  const emailInput = document.getElementById('report-email') as HTMLInputElement | null
+  if (emailInput) setReportEmail(emailInput.value)
+
   stopEngines()
   resetAlertAudio()
   if (state.lastSample) {
@@ -468,6 +516,41 @@ function finalizeTrip(): void {
   state.status = 'Relatório pronto.'
   state.alert = null
   render()
+
+  // No mesmo gesto do toque em Finalizar — abre o Mail com o relatório
+  sendReportEmail({ auto: true })
+}
+
+function sendReportEmail(opts: { auto?: boolean } = {}): void {
+  if (!state.report) return
+  const email = getReportEmail()
+  if (!email) {
+    showToast(
+      opts.auto
+        ? 'Informe o e-mail nas configurações para enviar o relatório'
+        : 'Informe o e-mail antes de enviar',
+      true,
+    )
+    return
+  }
+  if (!isValidEmail(email)) {
+    showToast('E-mail inválido', true)
+    return
+  }
+  const ok = openReportEmail(state.report)
+  if (ok) {
+    showToast(opts.auto ? 'Abrindo Mail com o relatório…' : 'Abrindo Mail…')
+  } else {
+    showToast('Não foi possível abrir o Mail', true)
+  }
+}
+
+async function shareReport(): Promise<void> {
+  if (!state.report) return
+  const result = await shareOrEmailReport(state.report)
+  if (result === 'share') showToast('Compartilhado')
+  else if (result === 'mailto') showToast('Abrindo Mail…')
+  else showToast('Não foi possível compartilhar', true)
 }
 
 function resetTrip(): void {
