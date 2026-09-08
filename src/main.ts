@@ -1,4 +1,9 @@
 import './style.css'
+import {
+  handleRadarAlertAudio,
+  resetAlertAudio,
+  unlockAudio,
+} from './alerts'
 import { RADARS } from './data/radars'
 import { formatClock, formatDuration, formatKmh } from './geo'
 import { GpsEngine } from './gps'
@@ -61,7 +66,7 @@ function render(): void {
     <div class="shell ${showReport ? 'report-open' : ''}">
       <header class="brand live-only">
         <h1>Relatório <span>Radar</span></h1>
-        <p>GPS, alerta de radares e relatório dos que você passou acima do limite.</p>
+        <p>GPS, alerta com sirene e voz — “diminua para X km/h” — e relatório ao finalizar.</p>
       </header>
 
       <section class="speed-stage live-only" aria-live="polite">
@@ -280,6 +285,7 @@ function onSample(sample: PositionSample): void {
 
   // Atualização leve do HUD sem re-render completo (melhor no iPhone)
   updateHud(sample, alert)
+  handleRadarAlertAudio(alert)
 
   if (newPassage) {
     showToast(
@@ -323,6 +329,8 @@ function updateHud(sample: PositionSample, alert: RadarAlert | null): void {
 }
 
 function startGps(): void {
+  void unlockAudio()
+  resetAlertAudio()
   beginTrip('gps')
   gps = new GpsEngine({
     onSample,
@@ -349,6 +357,8 @@ function startGps(): void {
 }
 
 function startSim(): void {
+  void unlockAudio()
+  resetAlertAudio()
   stopEngines()
   tracker.reset()
   state.mode = 'sim'
@@ -359,7 +369,7 @@ function startSim(): void {
   state.alert = null
   state.report = null
   state.error = null
-  state.status = 'Simulação · 90 km/h · 4×'
+  state.status = 'Simulação · 90 km/h · 4× · áudio ligado'
 
   sim = new SimEngine({
     onSample,
@@ -383,6 +393,7 @@ function startSim(): void {
 function finalizeTrip(): void {
   if (state.mode === 'idle' || !state.startedAt) return
   stopEngines()
+  resetAlertAudio()
 
   // Flush approaches still inside pass radius as passages
   if (state.lastSample) {
@@ -413,6 +424,7 @@ function finalizeTrip(): void {
 
 function resetTrip(): void {
   stopEngines()
+  resetAlertAudio()
   tracker.reset()
   state.mode = 'idle'
   state.startedAt = null

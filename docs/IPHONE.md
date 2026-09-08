@@ -1,51 +1,56 @@
 # Como colocar no iPhone — passo a passo
 
-## Opção A (mais fácil, AGORA) — Safari na Tela de Início
+## Opção A (mais fácil) — app na Tela de Início via Safari
 
-Não precisa de Mac nem App Store. É o piloto web com HTTPS.
+### 0. Uma vez no computador (GitHub)
 
-### 1. Abra no iPhone
-No **Safari** (importante: Safari, não Chrome), abra:
+1. Abra: https://github.com/nardoniF/relatorio-radar/settings/pages  
+2. Em **Build and deployment** → **Source**: escolha **Deploy from a branch**  
+3. Branch: **`gh-pages`** / pasta **`/`** → **Save**  
+4. Espere 1–2 minutos até aparecer o link do site
+
+O endereço será:
 
 **https://nardonif.github.io/relatorio-radar/**
 
-(Se a página ainda não carregar, espere 1–2 minutos após o publish do GitHub Pages.)
+### 1. No iPhone
 
-### 2. Instale como app
-1. Toque em **Compartilhar** (quadrado com seta para cima)
-2. Role e toque em **Adicionar à Tela de Início**
-3. Nome: `Radar` → **Adicionar**
+1. Abra o **Safari** (não use Chrome)  
+2. Cole o link acima  
+3. Toque em **Compartilhar** (□↑)  
+4. **Adicionar à Tela de Início** → nome `Radar` → **Adicionar**  
+5. Abra o ícone **Radar**
 
-### 3. Use
-1. Abra o ícone **Radar**
-2. **Simular no sofá** = teste em casa (sem dirigir)
-3. **GPS real** = na rua; quando pedir, **Permitir** localização
-4. **Finalizar** = relatório dos radares acima do limite
+### 2. Testar
 
-Pronto. Isso é o app no seu iPhone para testar.
+1. **Simular no sofá** → espera alertas → **Finalizar** → relatório  
+2. Ou **GPS real** → permitir localização → dirigir → **Finalizar**
 
----
-
-## Opção B — App nativo Swift (ícone “de verdade” via Xcode)
-
-Só se você tiver **Mac + Xcode + cabo** (ou rede) e o iPhone.
-
-1. No Mac: `git clone https://github.com/nardoniF/relatorio-radar.git`
-2. `cd relatorio-radar/ios/RelatorioRadar`
-3. `brew install xcodegen && xcodegen generate`
-4. `open RelatorioRadar.xcodeproj`
-5. Em **Signing**: escolha seu Apple ID / Team
-6. Conecte o iPhone → selecione o aparelho como destino → ▶ Run
-7. No iPhone: Ajustes → Geral → Gerenciamento de VPN e Dispositivo → confiar no desenvolvedor
-
-Isso instala o app Swift nativo. **Não dá para fazer isso só pelo celular** nem daqui do Linux.
+Sem token de API. GPS usa a localização do próprio iPhone.
 
 ---
 
-## Qual usar?
+## Opção B — se o Pages ainda não estiver no ar (rede local)
 
-| Você quer… | Faça |
-| --- | --- |
-| Testar hoje no sofá / na rua | **Opção A** |
-| App nativo Core Location / MapKit | **Opção B** (Mac) |
-| App Store pública | Depois, com conta Developer paga |
+No Mac ou PC (mesma Wi‑Fi do iPhone):
+
+```bash
+git clone https://github.com/nardoniF/relatorio-radar.git
+cd relatorio-radar
+npm install
+npm run dev
+```
+
+Anote o endereço `https://192.168.x.x:5173` que o Vite mostrar.  
+No iPhone Safari abra esse HTTPS (pode pedir para confiar no certificado) → depois **Adicionar à Tela de Início**.
+
+---
+
+## Opção C — app nativo Swift (precisa de Mac)
+
+1. Mac com Xcode + Apple ID  
+2. `cd ios/RelatorioRadar && brew install xcodegen && xcodegen generate`  
+3. Abrir no Xcode → Signing → plugar iPhone → ▶ Run  
+4. No iPhone: confiar no desenvolvedor em Ajustes → Geral  
+
+Isso **não** se instala só pelo celular.
