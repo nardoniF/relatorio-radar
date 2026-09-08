@@ -11,7 +11,9 @@ import { SpeedFilter } from '../src/engines/SpeedFilter.js'
 import { RadarDetection } from '../src/engines/RadarDetection.js'
 import { ViolationEngine } from '../src/engines/ViolationEngine.js'
 import { computeTripCost } from '../src/engines/TripCost.js'
-import { SEED_FINE_RULES } from '../src/seed/demoData.js'
+import { LocalMapMatcher } from '../src/engines/MapMatching.js'
+import { SEED_FINE_RULES, SEED_ROAD_SEGMENTS } from '../src/seed/demoData.js'
+import { LocalOsmProvider } from '../src/providers/LocalOsmProvider.js'
 import { DemoStore, resetDemoStore } from '../src/store/DemoStore.js'
 import type { FineRule, Radar } from '../src/types.js'
 
@@ -234,5 +236,47 @@ describe('DemoStore integration', () => {
         }),
       /duplicad/i,
     )
+  })
+})
+
+describe('LocalMapMatcher — PostGIS-style sem API paga', () => {
+  const segments = SEED_ROAD_SEGMENTS.map((s, i) => ({ ...s, id: `seg-${i}` }))
+  const matcher = new LocalMapMatcher(segments, 80)
+
+  it('matches GPS near Consolação to osm segment with maxspeed 50', () => {
+    const m = matcher.matchPoint({ lat: -23.5595, lng: -46.6508 }, 70)
+    assert.ok(m)
+    assert.equal(m!.segment.maxspeedKmh, 50)
+    assert.ok(m!.distanceM < 80)
+  })
+
+  it('prefers heading-aligned segment', () => {
+    const m = matcher.matchPoint({ lat: -23.5497, lng: -46.6235 }, 90)
+    assert.ok(m)
+    assert.equal(m!.segment.maxspeedKmh, 60)
+    assert.equal(m!.headingOk, true)
+  })
+})
+
+describe('LocalOsmProvider cascade', () => {
+  it('speed limit comes from matched segment (osm/local), not paid API', async () => {
+    const store = new DemoStore()
+    const provider = new LocalOsmProvider(store.listRadars(), store.listSegments())
+    const limit = await provider.getSpeedLimit({
+      lat: -23.5518,
+      lng: -46.6345,
+      headingDeg: 80,
+    })
+    assert.equal(limit.speedLimitKmh, 40)
+    assert.ok(['osm', 'local', 'radar-sign'].includes(limit.source) || limit.source === 'osm')
+  })
+
+  it('region pack returns radars + segments for offline cache', async () => {
+    const store = new DemoStore()
+    const provider = new LocalOsmProvider(store.listRadars(), store.listSegments())
+    const pack = await provider.getRegionPack(-23.555, -46.63, 20)
+    assert.ok(pack.radars.length >= 1)
+    assert.ok(pack.segments.length >= 1)
+    assert.equal(pack.source, 'local')
   })
 })

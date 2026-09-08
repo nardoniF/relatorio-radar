@@ -1,62 +1,45 @@
 # Relatório Radar
 
-Motor de **compliance viário em tempo real** para iPhone: GPS, segmento/sentido, limite, radares, alertas, possíveis infrações (estimativa CTB) e relatório com mapa — **sem exigir destino**.
-
-Fluxo principal:
+Motor de **compliance viário em tempo real** para iPhone — **sem destino** e **sem API paga obrigatória**.
 
 **ABRIR → INICIAR VIAGEM → DIRIGIR → FINALIZAR → RELATÓRIO**
 
-Sem relação com Sensor Tattoo Fix.
+## Arquitetura de custo
+
+| Camada | Tecnologia | Custo |
+| --- | --- | --- |
+| GPS | Core Location | R$ 0 |
+| Mapa UI | MapKit | R$ 0* |
+| Matching | PostGIS / segmentos locais | R$ 0 |
+| Limites | local → OSM `maxspeed` | R$ 0** |
+| Radares | base própria + cache | R$ 0*** |
+| Backend | Neon/Supabase free + Node | ~R$ 0 inicial |
+
+HERE/Mapbox **só como complemento** após custo/licença/alternativa — ver `docs/PROVIDER_COMPARISON.md`.
 
 ## Repositório
 
 | Pasta | Conteúdo |
 | --- | --- |
-| `ios/` | App nativo SwiftUI + `RelatorioRadarCore` (engines) |
-| `backend/` | API REST + PostGIS + `fine_rules` + providers |
-| `docs/` | Arquitetura, API, deploy, privacidade, **comparação HERE/Mapbox** |
-| raiz (`src/`, …) | Piloto web HTTPS (Safari) |
+| `ios/` | SwiftUI + engines locais (offline pack) |
+| `backend/` | API + PostGIS + matching local + `fine_rules` |
+| `docs/` | Arquitetura zero-custo, API, privacidade |
+| raiz | Piloto web HTTPS (Safari) |
 
-## Decisão de provedor
+## Cascata de limite
 
-Ver [`docs/PROVIDER_COMPARISON.md`](docs/PROVIDER_COMPARISON.md).
-
-**Preliminar:** HERE (matching + limites + safety cameras), com `DemoProvider` até haver contrato. Chaves **somente no backend**.
-
-## MVP
-
-- Iniciar / finalizar viagem (manual)
-- Core Location + background
-- Map matching (janelas) + limite por segmento
-- Radares com filtro de sentido
-- Alertas (voz/haptic preparados)
-- SpeedFilter + ViolationEngine (estimativa)
-- Relatório + mapa + histórico
-- Custo combustível
-- Simulador `trip.json`
-
-Fora do MVP: modo automático completo, CarPlay UI, pedágios reais, Waze como fonte de dados, rede social.
-
-## Linguagem legal
-
-Sempre **estimativa / possível infração**. Nunca “você recebeu uma multa”.
+1. Segmento matched (banco local)  
+2. OSM `maxspeed`  
+3. Complementar comercial (opcional)
 
 ## Quick start
 
 ```bash
-# Backend
-cd backend && npm install && npm test && npm run dev
-
-# Piloto web
-npm install && npm run dev
-
-# iOS — abrir ios/ no Xcode (macOS)
+cd backend && npm install && npm test && npm run dev   # PROVIDER=local
+npm install && npm run dev                            # piloto web
+# iOS: ios/README.md — Xcode no Mac
 ```
 
-## Piloto web (Safari)
+Pack offline: `GET /regions/pack?lat=&lng=&radiusKm=`
 
-```bash
-npm install && npm run dev
-```
-
-HTTPS local (`vite-plugin-mkcert`). No iPhone (mesma Wi‑Fi): abra `https://<IP>:5173`.
+Sempre **estimativa / possível infração** — nunca autuação oficial.

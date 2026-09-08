@@ -106,6 +106,78 @@ public final class APIClient: @unchecked Sendable {
         }
     }
 
+    /// Baixa pack regional (ruas + limites + radares) para cache offline.
+    public func fetchRegionPack(
+        near coordinate: Coordinate,
+        radiusKm: Double = 15
+    ) async throws -> RegionPack {
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("regions/pack"),
+            resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [
+            URLQueryItem(name: "lat", value: String(coordinate.latitude)),
+            URLQueryItem(name: "lng", value: String(coordinate.longitude)),
+            URLQueryItem(name: "radiusKm", value: String(radiusKm)),
+        ]
+        guard let url = comps.url else {
+            return RegionPack(radars: DemoMapProvider.sampleRadars, segments: DemoMapProvider.sampleSegments)
+        }
+        let (data, response) = try await session.data(from: url)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            return RegionPack(radars: DemoMapProvider.sampleRadars, segments: DemoMapProvider.sampleSegments)
+        }
+        struct PackEnvelope: Codable {
+            var pack: PackBody
+        }
+        struct PackBody: Codable {
+            var radars: [RadarDTO]
+            var segments: [SegmentDTO]
+            var disclaimer: String?
+        }
+        struct SegmentDTO: Codable {
+            var id: String
+            var name: String
+            var path: [PathDTO]
+            var maxspeedKmh: Double?
+            var maxspeedSource: String?
+            var forwardHeadingDeg: Double?
+            var confidence: Double?
+        }
+        struct PathDTO: Codable {
+            var lat: Double
+            var lng: Double
+        }
+        let env = try decoder.decode(PackEnvelope.self, from: data)
+        let radars = env.pack.radars.map {
+            RadarPoint(
+                id: $0.id,
+                name: $0.name,
+                coordinate: Coordinate(latitude: $0.lat, longitude: $0.lng),
+                limitKmh: $0.resolvedLimit,
+                enforcementHeadingDeg: $0.resolvedHeading,
+                directionKind: .forward,
+                cameraType: $0.cameraType
+            )
+        }
+        let segments = env.pack.segments.map { s in
+            RoadSegmentLocal(
+                id: s.id,
+                name: s.name,
+                path: s.path.map { Coordinate(latitude: $0.lat, longitude: $0.lng) },
+                maxspeedKmh: s.maxspeedKmh,
+                maxspeedSource: s.maxspeedSource ?? "osm",
+                forwardHeadingDeg: s.forwardHeadingDeg,
+                confidence: s.confidence ?? 0.7
+            )
+        }
+        return RegionPack(
+            radars: radars,
+            segments: segments,
+            disclaimer: env.pack.disclaimer ?? "Pack offline."
+        )
+    }
+
     /// Deep-link opcional para Waze — **nunca** scraping.
     public static func wazeDeepLink(coordinate: Coordinate) -> URL? {
         URL(string: "waze://?ll=\(coordinate.latitude),\(coordinate.longitude)&navigate=yes")

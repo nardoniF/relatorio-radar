@@ -7,8 +7,10 @@ import { computeTripCost } from '../engines/TripCost.js'
 import {
   SEED_DEMO_RADARS,
   SEED_FINE_RULES,
+  SEED_ROAD_SEGMENTS,
   SEED_VEHICLE_SETTINGS,
 } from '../seed/demoData.js'
+import type { RoadSegment } from '../engines/MapMatching.js'
 import type {
   FineRule,
   Radar,
@@ -31,6 +33,7 @@ type TripRuntime = {
 export class DemoStore {
   radars = new Map<string, Radar>()
   fineRules = new Map<string, FineRule>()
+  segments = new Map<string, RoadSegment>()
   trips = new Map<string, Trip>()
   locations = new Map<string, TripLocation[]>()
   events = new Map<string, TripEvent[]>()
@@ -46,6 +49,10 @@ export class DemoStore {
       const id = randomUUID()
       this.fineRules.set(id, { ...f, id })
     }
+    for (const s of SEED_ROAD_SEGMENTS) {
+      const id = randomUUID()
+      this.segments.set(id, { ...s, id })
+    }
     this.vehicleSettings = { ...SEED_VEHICLE_SETTINGS, id: randomUUID() }
   }
 
@@ -55,6 +62,10 @@ export class DemoStore {
 
   listRadars(): Radar[] {
     return [...this.radars.values()].filter((r) => r.active)
+  }
+
+  listSegments(): RoadSegment[] {
+    return [...this.segments.values()].filter((s) => s.active)
   }
 
   findRadarByExternalId(externalId: string): Radar | undefined {

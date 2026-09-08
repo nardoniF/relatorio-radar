@@ -1,45 +1,62 @@
-# Comparação de provedores — Map Matching, Limites e Radares (Brasil)
+# Fontes de dados — prioridade sem API paga
 
-**Status:** decisão preliminar para MVP — **HERE como provedor comercial principal**, com **DemoProvider** local até as chaves serem contratadas. Mapbox permanece opção de fallback para matching/visualização.
+**Decisão de arquitetura:** o MVP funciona com **Core Location + MapKit + PostgreSQL/PostGIS + base própria + OSM**, sem dependência obrigatória de HERE/Mapbox.
 
-> Nenhuma chave secreta deve ir no app iOS. Todas as chamadas HERE/Mapbox passam pelo **backend proxy**.
+> APIs comerciais só como **fonte complementar**, e só depois de documentar custo, limites, licença e alternativa gratuita.
 
-## Critérios
+## Stack gratuita / open source
 
-| Critério | HERE | Mapbox |
+| Necessidade | Fonte primária | Custo |
 | --- | --- | --- |
-| Cobertura mapa Brasil | **HERE Map** (nível navegação) | OSM + camadas Mapbox; qualidade variável por via |
-| Map matching / route matching | Route Matching API v8 (trace → links + atributos) | Map Matching API |
-| Limites de velocidade | **Map Attributes API v8** (`SPEED_LIMITS_FCn`, condicionais, variáveis) + `APPLICABLE_SPEED_LIMIT` quando disponível | Menos focado em atributo legal por link; não é o ponto forte |
-| Radares / safety cameras | **Safety Cameras Feed** (fixos + mobile, direção, limite) | Sem feed equivalente de câmeras de fiscalização como produto core |
-| Licença comercial | Contrato HERE (Platform / OLP) | ToS Mapbox / Enterprise |
-| Cache | Restrições fortes em alguns produtos (ex.: OLP: limites de retenção de output); validar no contrato fechado | Cache permitido sob ToS; redistribuição de datasets proibida |
-| Redistribuição | Conteúdo HERE em geral **não** pode virar repositório próprio redistribuído | Proíbe criar dataset substituto |
-| Preço (ordem de grandeza) | ~250k tx/mês free tier; Pro ~US$449/1M tx (referência pública 2026) | Free menor; pay-as-you-go; enterprise sob consulta |
-| Uso no app sem destino | Matching incremental por janela de pontos + attributes por link | Matching por trace; limites precisam de outra fonte |
-| Adequação MVP BR | **Melhor encaixe** (limites + câmeras + matching no mesmo vendor) | Bom para mapa/estilo; fraco sozinho para radar+limite legal |
+| GPS | Apple Core Location | R$ 0 / req |
+| Mapa no app | Apple MapKit | R$ 0* |
+| Map matching | PostGIS (`ST_DWithin` / segmento mais próximo) + cache no device | R$ 0 |
+| Limite de velocidade | `road_segments.maxspeed` (local → OSM) | R$ 0** |
+| Radares | Tabela `radars` própria + pack regional no iPhone | R$ 0*** |
+| Backend | Neon / Supabase free / similar + Node | ~R$ 0 inicial |
+| Banco | PostgreSQL + PostGIS | open source |
 
-## Radares
+\* Condições normais do MapKit nativo.  
+\*\* OSM `maxspeed` incompleto em muitas vias BR.  
+\*\*\* Base de radares **licenciada** pode ter custo; não usar scraping.
 
-- **HERE Safety Cameras:** API dedicada com `cameraType`, `speedLimit`, `drivingDirection` / `directionType` — essencial para filtrar **mesmo sentido**.
-- **Mapbox:** não substitui uma base licenciada de radares. Não usar scraping / bases “gratuitas” sem licença para produção.
-- **Banco próprio (`radars` + PostGIS):** espelho/cache operacional sob os termos do contrato (TTL, proibição de redistribuir). Seed de demo apenas para desenvolvimento.
+## Cascata de limites
 
-## Recomendação
+```
+GPS → match segmento
+        │
+        ├─1─ maxspeed no banco local
+        ├─2─ maxspeed OSM (import/cache)
+        └─3─ complementar comercial (opcional, futuro)
+```
 
-1. **MVP / produção BR:** HERE  
-   - Route Matching / Map Attributes para segmento + limite  
-   - Safety Cameras para radares com direção  
-2. **MapKit** no iPhone para UI de mapa (sem depender de Waze).  
-3. **Mapbox** só se: (a) contrato HERE falhar em preço/cobertura de câmeras no BR, ou (b) necessidade forte de estilo de mapa — ainda assim limites/radares continuariam HERE ou outro vendor licenciado.  
-4. Até haver contrato: `DemoProvider` + seeds PostGIS (nunca scraping).
+## HERE / Mapbox (opcional)
 
-## Próximos passos comerciais
+| Critério | HERE | Mapbox | Nosso stack local |
+| --- | --- | --- | --- |
+| Matching | Route Matching pago | Map Matching pago | PostGIS / local |
+| Limites | Map Attributes | Fraco sozinho | OSM + local |
+| Radares | Safety Cameras (licença) | Sem feed core | Base própria |
+| Offline trip | Depende de rede/contrato | Idem | Pack regional |
+| Custo por viagem | Transações | Transações | ~zero |
 
-- Solicitar trial HERE (Map Attributes + Safety Cameras + Route Matching) com cobertura **BRA**.  
-- Confirmar por escrito: TTL de cache permitido, se podemos materializar `radars`/`speed_limits` no PostGIS, e restrições legais de alerta de radar no BR.  
-- Cotar Mapbox Matching apenas como plano B.
+**Quando considerar complementar:** cobertura OSM/base própria insuficiente **e** ROI claro após cotação.
+
+## Licenciamento — cuidado
+
+Não prometemos “todos os radares do Brasil de graça”.
+
+- Software, GPS, MapKit, PostGIS: ok  
+- Dados comerciais atualizados de radar/limite: podem exigir licença paga  
+- Proibido: scraping ou redistribuir dados sem permissão
+
+## Providers no código
+
+| `PROVIDER` | Uso |
+| --- | --- |
+| `local` (default) | Demo + segmentos OSM-like + radars próprios |
+| `here` | Stub complementar (chave só no backend) |
 
 ## Princípio
 
-Não substituir API comercial por scraping ou fonte não licenciada.
+Construir o MVP **independente**. Só então, se faltar cobertura, acrescentar fonte comercial onde realmente fizer falta.

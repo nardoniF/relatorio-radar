@@ -1,63 +1,89 @@
-# Arquitetura — Real-Time Road Compliance Engine
+# Arquitetura — Real-Time Road Compliance Engine (zero-custo first)
 
 ```
-SwiftUI / ViewModels
-        ↓
-   Trip Engine
-        ↓
-┌───────────────────────────────────────────┐
-│ Location │ Map Matching │ Radar │ Speed   │
-│ Engine   │ Engine       │ Engine│ Limit   │
-└───────────────────────────────────────────┘
-        ↓
- SpeedFilter → ViolationEngine → TripReportEngine
-        ↓
-   Backend API (proxy HERE) → PostgreSQL/PostGIS
+                 iPHONE
+                   │
+             Core Location  (R$ 0)
+                   │
+                   ▼
+            GPS / VELOCIDADE
+                   │
+                   ▼
+        MAP MATCHING LOCAL
+        (segments PostGIS / cache)
+                   │
+          ┌────────┴────────┐
+          ▼                 ▼
+     BANCO DE RUAS      BANCO DE RADARES
+     OSM/PostGIS        próprio / cache
+          │                 │
+          └────────┬────────┘
+                   ▼
+             LIMITE DA VIA
+                   │
+                   ▼
+          RADAR + VELOCIDADE
+                   │
+                   ▼
+          MOTOR DE INFRAÇÃO
+                   │
+          ┌────────┴────────┐
+          ▼                 ▼
+       🟢 OK          🔴 ESTIMATIVA
+          │                 │
+          └────────┬────────┘
+                   ▼
+      RELATÓRIO (MapKit + custos)
 ```
 
-## Princípio
+## Princípio de custo
 
-O app **não** é “GPS + lista de radares”.
+O MVP **não** depende de API paga por requisição.
 
-Cada decisão usa:
+| Camada | Tecnologia | Custo recorrente |
+| --- | --- | --- |
+| GPS | Core Location | R$ 0 |
+| Mapa UI | MapKit nativo | R$ 0* |
+| Matching | PostGIS / segmentos locais | R$ 0 |
+| Limites | banco local → OSM (`maxspeed`) | R$ 0** |
+| Radares | base própria + cache no iPhone | R$ 0*** |
+| Backend | Neon/Supabase free + Node | ~R$ 0 no início |
 
-`posição + estrada + sentido + segmento + limite + radar + velocidade + tempo + confiança`
+\* Nas condições normais do MapKit nativo.  
+\*\* OSM não garante cobertura completa/atualizada.  
+\*\*\* Fonte de radares deve ser **licenciada** para uso comercial — pode custar; scraping não é opção.
 
-Fluxo: **ALERTA → EVENTO → ANÁLISE → RELATÓRIO**
+Internet = **atualização de pacotes regionais**, não dependência a cada segundo.
 
-## Módulos
+## Cascata de limite de velocidade
 
-| Módulo | Responsabilidade |
-| --- | --- |
-| LocationEngine | Core Location, background updates, samples ricos |
-| TripEngine | Estados IDLE→…→COMPLETED, UUID, start/finish |
-| MapMatchingEngine | Janelas de pontos → road segment + direction (HERE) |
-| SpeedLimitEngine | Limite do segmento atual (nunca limite único de rodovia) |
-| RadarEngine | Corredor local, mesmo sentido, zonas adaptativas, anti-duplicata |
-| SpeedFilter | speedRaw / speedFiltered / confidence |
-| ViolationEngine | Excesso %, classificação CTB, multa **estimada** via `fine_rules` |
-| TripReportEngine | Resumo, mapa, lista cronológica, custos |
-| TripCostEngine | Combustível + pedágios (futuro) + multas estimadas |
-| AlertEngine | Voz / haptic / banner (sem forçar olhar a tela) |
+1. Banco local (segmento matched)  
+2. Atributo OSM `maxspeed` no segmento  
+3. Fonte complementar licenciada (HERE/Mapbox/etc.) **somente se** custo/licença/alternativa forem documentados
 
-## Modo sem destino (principal)
+## Offline no iPhone
 
-`ABRIR → INICIAR VIAGEM → DIRIGIR → FINALIZAR → RELATÓRIO`
+```
+┌────────────────────────────┐
+│ BANCO LOCAL DO IPHONE      │
+│ ruas · limites · radares   │
+│ segmentos                  │
+└────────────┬───────────────┘
+             ▼
+        GPS DO IPHONE
+             ▼
+     MOTOR DE ANÁLISE
+```
 
-Sem origem/destino/rota prévia.
+Endpoint de sync: `GET /regions/pack?lat=&lng=&radiusKm=`
 
-## Modo automático
+## APIs comerciais
 
-Fase posterior ao MVP. Opcional, desligável, baixo consumo fora da viagem.
+HERE / Mapbox **não** são obrigatórias. Podem existir como `PROVIDER=complementary_*` após comparação de custo, limites, licença e alternativa gratuita.
 
-## Offline
+## Princípio de domínio
 
-Cache geográfico de radares/limites já baixados; sync quando houver rede. Matching/attributes só ao mudar região/segmento.
+`posição + estrada + sentido + segmento + limite + radar + velocidade + tempo + confiança`  
+→ **ALERTA → EVENTO → ANÁLISE → RELATÓRIO**
 
-## CarPlay / Watch / Android
-
-Engines em target sem UI (`RelatorioRadarCore`). Interfaces SwiftUI/CarPlay são adaptadores.
-
-## Waze
-
-Deep link opcional para navegação. Zero dependência de dados do Waze.
+Sempre **estimativa / possível infração** — nunca autuação oficial.

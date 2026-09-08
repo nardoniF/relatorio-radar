@@ -46,7 +46,13 @@ Histórico.
 Corredor local (não dump global).
 
 ### `GET /speed-limits?lat=&lng=&heading=`
-Limite aplicável ao segmento (via provider).
+Limite via cascata local/OSM (sem API paga).
+
+### `POST /match`
+Map matching local (PostGIS-style) sobre segmentos cacheados.
+
+### `GET /regions/pack?lat=&lng=&radiusKm=`
+Pack regional (ruas + limites + radares) para cache offline no iPhone.
 
 ## Regras e veículo
 

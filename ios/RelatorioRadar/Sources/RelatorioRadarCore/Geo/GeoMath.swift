@@ -49,6 +49,20 @@ public enum GeoMath {
         smallestAngleDeltaDegrees(vehicleHeading, radarHeading) <= toleranceDeg
     }
 
+    public static func headingMatches(
+        _ a: Double,
+        _ b: Double,
+        toleranceDeg: Double = 75
+    ) -> Bool {
+        isSameDirection(vehicleHeading: a, radarHeading: b, toleranceDeg: toleranceDeg)
+    }
+
+    public static func normalizeHeading(_ deg: Double) -> Double {
+        var d = deg.truncatingRemainder(dividingBy: 360)
+        if d < 0 { d += 360 }
+        return d
+    }
+
     public static func pathLengthMeters(_ path: [Coordinate]) -> Double {
         guard path.count >= 2 else { return 0 }
         var total = 0.0

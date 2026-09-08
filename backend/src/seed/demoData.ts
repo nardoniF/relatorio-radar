@@ -1,4 +1,5 @@
 import type { FineRule, Radar, VehicleSettings } from '../types.js'
+import type { RoadSegment } from '../engines/MapMatching.js'
 
 /** Seeds alinhados às migrations 009 / 010 — usados pelo DemoStore. */
 
@@ -139,3 +140,94 @@ export const SEED_VEHICLE_SETTINGS: Omit<VehicleSettings, 'id'> = {
   vehicleType: 'car',
   includeTolls: true,
 }
+
+/**
+ * Segmentos OSM-like ao longo do trecho demo SP (piloto / matching local).
+ * maxspeed_source = osm | local — sem API paga.
+ */
+export const SEED_ROAD_SEGMENTS: Omit<RoadSegment, 'id'>[] = [
+  {
+    osmWayId: 1001,
+    name: 'Rua da Consolação',
+    path: [
+      { lat: -23.5614, lng: -46.6558 },
+      { lat: -23.5602, lng: -46.6525 },
+      { lat: -23.5588, lng: -46.6491 },
+      { lat: -23.5571, lng: -46.6458 },
+    ],
+    oneway: 'both',
+    forwardHeadingDeg: 72,
+    maxspeedKmh: 50,
+    maxspeedSource: 'osm',
+    highwayClass: 'primary',
+    confidence: 0.85,
+    active: true,
+  },
+  {
+    osmWayId: 1002,
+    name: 'Rua Augusta',
+    path: [
+      { lat: -23.5571, lng: -46.6458 },
+      { lat: -23.5554, lng: -46.6426 },
+      { lat: -23.5539, lng: -46.6395 },
+    ],
+    oneway: 'both',
+    forwardHeadingDeg: 75,
+    maxspeedKmh: 50,
+    maxspeedSource: 'osm',
+    highwayClass: 'secondary',
+    confidence: 0.8,
+    active: true,
+  },
+  {
+    osmWayId: 1003,
+    name: 'Av. Higienópolis',
+    path: [
+      { lat: -23.5539, lng: -46.6395 },
+      { lat: -23.5526, lng: -46.6362 },
+      { lat: -23.5514, lng: -46.6328 },
+      { lat: -23.5505, lng: -46.6291 },
+    ],
+    oneway: 'both',
+    forwardHeadingDeg: 80,
+    maxspeedKmh: 40,
+    maxspeedSource: 'osm',
+    highwayClass: 'secondary',
+    confidence: 0.8,
+    active: true,
+  },
+  {
+    osmWayId: 1004,
+    name: 'Av. Pacaembu',
+    path: [
+      { lat: -23.5505, lng: -46.6291 },
+      { lat: -23.5499, lng: -46.6254 },
+      { lat: -23.5496, lng: -46.6216 },
+      { lat: -23.5498, lng: -46.6179 },
+    ],
+    oneway: 'both',
+    forwardHeadingDeg: 90,
+    maxspeedKmh: 60,
+    maxspeedSource: 'local',
+    highwayClass: 'primary',
+    confidence: 0.9,
+    active: true,
+  },
+  {
+    osmWayId: 1005,
+    name: 'Av. Sumaré',
+    path: [
+      { lat: -23.5498, lng: -46.6179 },
+      { lat: -23.5504, lng: -46.6143 },
+      { lat: -23.5515, lng: -46.6109 },
+      { lat: -23.553, lng: -46.6078 },
+    ],
+    oneway: 'both',
+    forwardHeadingDeg: 110,
+    maxspeedKmh: 50,
+    maxspeedSource: 'osm',
+    highwayClass: 'primary',
+    confidence: 0.8,
+    active: true,
+  },
+]

@@ -1,7 +1,7 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import { config } from './config.js'
-import { DemoProvider } from './providers/DemoProvider.js'
+import { LocalOsmProvider } from './providers/LocalOsmProvider.js'
 import { HereProvider } from './providers/HereProvider.js'
 import { registerRoutes } from './routes/index.js'
 import { getDemoStore } from './store/DemoStore.js'
@@ -15,14 +15,16 @@ export async function buildApp() {
 
   const store = getDemoStore()
 
-  const provider: MapDataProvider =
-    config.provider === 'here'
-      ? new HereProvider(config.hereApiKey)
-      : new DemoProvider(store.listRadars())
+  let provider: MapDataProvider
+  if (config.provider === 'here') {
+    provider = new HereProvider(config.hereApiKey)
+  } else {
+    provider = new LocalOsmProvider(store.listRadars(), store.listSegments())
+  }
 
   if (config.store === 'postgres') {
     app.log.warn(
-      'STORE=postgres: migrations SQL em /migrations; runtime MVP usa DemoStore. Rode npm run migrate com Docker.',
+      'STORE=postgres: migrations SQL em /migrations; runtime MVP usa store em memória + matching local. Rode npm run migrate com Docker/Neon.',
     )
   }
 

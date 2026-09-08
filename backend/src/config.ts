@@ -1,7 +1,8 @@
 import 'dotenv/config'
 
 export type StoreMode = 'memory' | 'postgres'
-export type ProviderMode = 'demo' | 'here'
+/** local = default zero-cost; here = complementar opcional */
+export type ProviderMode = 'local' | 'demo' | 'here'
 
 function intEnv(name: string, fallback: number): number {
   const v = process.env[name]
@@ -10,12 +11,19 @@ function intEnv(name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback
 }
 
+function providerFromEnv(): ProviderMode {
+  const raw = (process.env.PROVIDER ?? 'local').toLowerCase()
+  if (raw === 'here') return 'here'
+  if (raw === 'demo') return 'demo' // alias histórico → local
+  return 'local'
+}
+
 export const config = {
   port: intEnv('PORT', 3001),
   store: (process.env.STORE === 'postgres' ? 'postgres' : 'memory') as StoreMode,
   databaseUrl: process.env.DATABASE_URL ?? '',
   hereApiKey: process.env.HERE_API_KEY ?? '',
-  provider: (process.env.PROVIDER === 'here' ? 'here' : 'demo') as ProviderMode,
+  provider: providerFromEnv(),
   jwtSecret: process.env.JWT_SECRET ?? '',
 }
 

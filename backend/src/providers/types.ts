@@ -1,4 +1,5 @@
 import type { LatLng, Radar, SpeedLimitResult } from '../types.js'
+import type { RoadSegment } from '../engines/MapMatching.js'
 
 export type NearbyRadarsQuery = {
   lat: number
@@ -20,17 +21,39 @@ export type MapMatchPoint = LatLng & {
 }
 
 export type MapMatchResult = {
-  matched: Array<LatLng & { linkId?: string; speedLimitKmh?: number | null }>
+  matched: Array<
+    LatLng & {
+      linkId?: string
+      speedLimitKmh?: number | null
+      roadName?: string
+    }
+  >
   source: string
 }
 
+/** Pack regional para cache offline no iPhone. */
+export type RegionPack = {
+  center: LatLng
+  radiusKm: number
+  radars: Radar[]
+  segments: RoadSegment[]
+  generatedAt: string
+  source: string
+  disclaimer: string
+}
+
 /**
- * Abstração de provedor comercial / demo.
- * Chaves de API ficam apenas no backend (env).
+ * Abstração de provedor de mapa/radares/limites.
+ * Default = local (OSM/PostGIS-style). Comercial = complementar opcional.
  */
 export interface MapDataProvider {
   readonly name: string
   getNearbyRadars(query: NearbyRadarsQuery): Promise<Radar[]>
   getSpeedLimit(query: SpeedLimitQuery): Promise<SpeedLimitResult>
   matchTrace?(points: MapMatchPoint[]): Promise<MapMatchResult>
+  getRegionPack?(
+    lat: number,
+    lng: number,
+    radiusKm: number,
+  ): Promise<RegionPack>
 }

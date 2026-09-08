@@ -185,6 +185,59 @@ export async function registerRoutes(
     const settings = store.updateVehicleSettings(req.body ?? {})
     return { settings }
   })
+
+  /** Pack regional para cache offline no iPhone (ruas + limites + radares). */
+  app.get<{
+    Querystring: { lat?: string; lng?: string; radiusKm?: string }
+  }>('/regions/pack', async (req, reply) => {
+    const lat = Number(req.query.lat)
+    const lng = Number(req.query.lng)
+    const radiusKm = Number(req.query.radiusKm ?? 15)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return reply.code(400).send({ error: 'lat e lng são obrigatórios' })
+    }
+    if (!provider.getRegionPack) {
+      return reply
+        .code(501)
+        .send({ error: 'Region pack disponível apenas no provider local' })
+    }
+    try {
+      const pack = await provider.getRegionPack(
+        lat,
+        lng,
+        Number.isFinite(radiusKm) ? radiusKm : 15,
+      )
+      return { pack }
+    } catch (e) {
+      return sendErr(reply, e)
+    }
+  })
+
+  /** Map matching local (sem API paga). */
+  app.post<{
+    Body: {
+      points?: Array<{
+        lat: number
+        lng: number
+        headingDeg?: number | null
+        speedKmh?: number
+      }>
+    }
+  }>('/match', async (req, reply) => {
+    const points = req.body?.points
+    if (!Array.isArray(points) || points.length === 0) {
+      return reply.code(400).send({ error: 'points[] é obrigatório' })
+    }
+    if (!provider.matchTrace) {
+      return reply.code(501).send({ error: 'Matching não disponível' })
+    }
+    try {
+      const result = await provider.matchTrace(points)
+      return { match: result }
+    } catch (e) {
+      return sendErr(reply, e)
+    }
+  })
 }
 
 function sendErr(

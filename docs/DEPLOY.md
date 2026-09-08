@@ -6,26 +6,31 @@
 cd backend
 cp .env.example .env
 npm install
-docker compose up -d   # Postgres + PostGIS
+# Opcional free-tier: Neon / Supabase Postgres+PostGIS
+docker compose up -d   # ou DATABASE_URL=… no Neon
 npm run migrate
-npm run dev            # :8787
+npm run dev            # :3001  PROVIDER=local
 ```
 
-Sem Docker: o backend sobe com **DemoStore** em memória (seeds de radares + fine_rules) para desenvolvimento e testes.
+Sem Docker: **DemoStore + matching local** em memória (seeds).
 
 Variáveis:
 
-- `DATABASE_URL` — Postgres PostGIS
-- `HERE_API_KEY` — só servidor
+- `DATABASE_URL` — Postgres PostGIS (Neon/Supabase free ok)
+- `PROVIDER` — `local` (padrão) \| `here` (complementar)
+- `HERE_API_KEY` — só se complementar
 - `PORT` — default 3001
-- `PROVIDER` — `demo` | `here`
 
 ## iOS
 
 1. Abrir `ios/` no Mac com Xcode 15+.
 2. Capabilities: Background Modes → Location updates.
-3. Apontar `APIClient` base URL para o backend (HTTPS em device).
-4. Nunca embutir `HERE_API_KEY` no target do app.
+3. Baixar pack: `GET /regions/pack` → cache local → viagem offline.
+4. **Nunca** embutir chaves comerciais no app.
+
+## Princípio
+
+Internet atualiza packs regionais. A viagem analisa GPS + cache local.
 
 ## Web piloto
 

@@ -95,4 +95,31 @@ describe('HTTP API smoke', () => {
     assert.equal(put.statusCode, 200)
     assert.equal(put.json().settings.fuelPriceBrl, 7.2)
   })
+
+  it('GET /regions/pack returns offline cache payload', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/regions/pack?lat=-23.555&lng=-46.63&radiusKm=20',
+    })
+    assert.equal(res.statusCode, 200)
+    const pack = res.json().pack
+    assert.ok(pack.radars.length >= 1)
+    assert.ok(pack.segments.length >= 1)
+  })
+
+  it('POST /match snaps points without paid API', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/match',
+      payload: {
+        points: [
+          { lat: -23.5595, lng: -46.6508, headingDeg: 70 },
+          { lat: -23.5497, lng: -46.6235, headingDeg: 90 },
+        ],
+      },
+    })
+    assert.equal(res.statusCode, 200)
+    assert.equal(res.json().match.source, 'local-postgis-style')
+    assert.equal(res.json().match.matched.length, 2)
+  })
 })

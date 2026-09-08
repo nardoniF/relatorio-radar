@@ -8,8 +8,8 @@ public final class SpeedLimitEngine: @unchecked Sendable {
         self.provider = provider
     }
 
-    public func limitKmh(near coordinate: Coordinate) -> Double? {
-        let limit = provider.speedLimitKmh(at: coordinate)
+    public func limitKmh(near coordinate: Coordinate, heading: Double? = nil) -> Double? {
+        let limit = provider.speedLimitKmh(at: coordinate, heading: heading)
         if let limit { lastLimitKmh = limit }
         return limit
     }

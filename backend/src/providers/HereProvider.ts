@@ -4,17 +4,17 @@ import type {
   MapMatchPoint,
   MapMatchResult,
   NearbyRadarsQuery,
+  RegionPack,
   SpeedLimitQuery,
 } from './types.js'
 
 /**
- * Stub HERE Platform.
+ * Stub complementar HERE — NÃO é o caminho padrão do MVP.
  *
- * TODO: Map Attributes API v8 — SPEED_LIMITS_FCn / APPLICABLE_SPEED_LIMIT
- * TODO: Safety Cameras Feed — cameraType, speedLimit, drivingDirection
- * TODO: Route Matching API v8 — trace → links + atributos
+ * Use apenas se a cobertura OSM/base própria for insuficiente e após
+ * documentar custo, limites, licença e alternativa gratuita.
  *
- * A chave HERE_API_KEY deve vir apenas de process.env (nunca do cliente).
+ * Chave: HERE_API_KEY somente no backend (.env).
  */
 export class HereProvider implements MapDataProvider {
   readonly name = 'here'
@@ -23,42 +23,44 @@ export class HereProvider implements MapDataProvider {
   constructor(apiKey: string) {
     this.apiKey = apiKey
     if (!this.apiKey) {
-      // Não falha no boot — endpoints retornam erro claro se usados sem chave
       console.warn(
-        '[HereProvider] HERE_API_KEY ausente. Configure no .env do backend.',
+        '[HereProvider] complementar sem HERE_API_KEY. Prefira PROVIDER=local.',
       )
     }
   }
 
   async getNearbyRadars(_query: NearbyRadarsQuery): Promise<Radar[]> {
     this.requireKey()
-    // TODO: chamar HERE Safety Cameras Feed com bbox/raio
-    // TODO: mapear directionType / drivingDirection → directionDeg
-    // TODO: respeitar TTL de cache do contrato OLP
     throw new Error(
-      'HereProvider.getNearbyRadars ainda não implementado (Safety Cameras). Use PROVIDER=demo.',
+      'HereProvider complementar não implementado. Use PROVIDER=local (PostGIS/OSM).',
     )
   }
 
   async getSpeedLimit(_query: SpeedLimitQuery): Promise<SpeedLimitResult> {
     this.requireKey()
-    // TODO: Map Attributes API v8 — atributos de velocidade no link
     throw new Error(
-      'HereProvider.getSpeedLimit ainda não implementado (Map Attributes). Use PROVIDER=demo.',
+      'HereProvider complementar não implementado. Use PROVIDER=local (cascata OSM).',
     )
   }
 
   async matchTrace(_points: MapMatchPoint[]): Promise<MapMatchResult> {
     this.requireKey()
-    // TODO: Route Matching API v8
     throw new Error(
-      'HereProvider.matchTrace ainda não implementado (Route Matching). Use PROVIDER=demo.',
+      'HereProvider complementar não implementado. Use matching local PostGIS-style.',
     )
+  }
+
+  async getRegionPack(
+    _lat: number,
+    _lng: number,
+    _radiusKm: number,
+  ): Promise<RegionPack> {
+    throw new Error('Region pack só está disponível no provider local.')
   }
 
   private requireKey(): void {
     if (!this.apiKey) {
-      throw new Error('HERE_API_KEY não configurada no ambiente do backend')
+      throw new Error('HERE_API_KEY não configurada (fonte complementar)')
     }
   }
 }

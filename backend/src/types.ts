@@ -123,7 +123,8 @@ export type SpeedLimitResult = {
   speedLimitKmh: number | null
   roadName: string | null
   source: string
-  confidence: 'demo' | 'provider' | 'unknown'
+  confidence: string
+  segmentId?: string
 }
 
 export type ViolationEstimate = {

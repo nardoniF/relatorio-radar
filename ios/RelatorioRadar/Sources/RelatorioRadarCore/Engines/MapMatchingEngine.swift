@@ -1,6 +1,6 @@
 import Foundation
 
-/// Map matching em lotes — provider injetável (HERE via backend proxy, Demo local).
+/// Map matching em lotes — provider local (PostGIS/OSM-style). Comercial só complementar.
 public final class MapMatchingEngine: @unchecked Sendable {
     private let provider: MapMatchingProviding
     public private(set) var lastResult: MapMatchResult?
