@@ -1,16 +1,32 @@
 /**
- * Alertas sonoros para Safari/iPhone.
- * iOS: áudio/voz só liberam após toque do usuário.
- * Importante: speechSynthesis no iPhone quebra se chamado só dentro de setTimeout longo.
+ * Alertas: sirene + voz "Baixa a velocidade para X".
+ * Dispara só quando distância ≤ alertDistanceM (default 300).
+ * iOS: unlock no toque; fala com speechSynthesis + fallback em áudio TTS.
  */
 
-type AlertLevel = 'far' | 'near' | 'imminent'
+const STORAGE_KEY = 'radar_alert_distance_m'
 
 let audioCtx: AudioContext | null = null
 let unlocked = false
-let lastSpokenKey: string | null = null
+let lastSpokenRadarId: string | null = null
 let lastSirenAt = 0
-let lastVoiceAt = 0
+let alertDistanceM = loadDistance()
+let ttsAudio: HTMLAudioElement | null = null
+
+function loadDistance(): number {
+  const raw = localStorage.getItem(STORAGE_KEY)
+  const n = raw ? Number(raw) : 300
+  return Number.isFinite(n) ? Math.min(1000, Math.max(50, n)) : 300
+}
+
+export function getAlertDistanceM(): number {
+  return alertDistanceM
+}
+
+export function setAlertDistanceM(m: number): void {
+  alertDistanceM = Math.min(1000, Math.max(50, Math.round(m)))
+  localStorage.setItem(STORAGE_KEY, String(alertDistanceM))
+}
 
 function getCtx(): AudioContext {
   if (!audioCtx) {
@@ -31,34 +47,49 @@ export async function unlockAudio(): Promise<void> {
     /* ignore */
   }
 
-  // Bip audível no unlock — confirma que o som do iPhone está liberado
   const t0 = c.currentTime
   const osc = c.createOscillator()
   const gain = c.createGain()
   osc.type = 'sine'
   osc.frequency.value = 880
   gain.gain.setValueAtTime(0.0001, t0)
-  gain.gain.exponentialRampToValueAtTime(0.2, t0 + 0.02)
-  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18)
+  gain.gain.exponentialRampToValueAtTime(0.18, t0 + 0.02)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.15)
   osc.connect(gain)
   gain.connect(c.destination)
   osc.start(t0)
-  osc.stop(t0 + 0.2)
+  osc.stop(t0 + 0.16)
 
   unlocked = true
+
   if ('speechSynthesis' in window) {
-    window.speechSynthesis.getVoices()
-    // Alguns iOS só listam vozes após este evento
-    window.speechSynthesis.onvoiceschanged = () => {
+    try {
+      window.speechSynthesis.cancel()
+      const warm = new SpeechSynthesisUtterance(' ')
+      warm.volume = 0.01
+      warm.rate = 1
+      warm.lang = 'pt-BR'
+      window.speechSynthesis.speak(warm)
       window.speechSynthesis.getVoices()
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices()
+      }
+    } catch {
+      /* ignore */
     }
+  }
+
+  // Pré-cria elemento de áudio (iOS)
+  if (!ttsAudio) {
+    ttsAudio = new Audio()
+    ttsAudio.setAttribute('playsinline', 'true')
   }
 }
 
-export function playSiren(durationSec = 1.6, force = false): void {
+export function playSiren(durationSec = 1.5, force = false): void {
   if (!unlocked && !force) return
   const now = Date.now()
-  if (!force && now - lastSirenAt < 1800) return
+  if (!force && now - lastSirenAt < 2200) return
   lastSirenAt = now
 
   const c = getCtx()
@@ -67,7 +98,7 @@ export function playSiren(durationSec = 1.6, force = false): void {
   const t0 = c.currentTime
   const master = c.createGain()
   master.gain.setValueAtTime(0.0001, t0)
-  master.gain.exponentialRampToValueAtTime(0.35, t0 + 0.04)
+  master.gain.exponentialRampToValueAtTime(0.38, t0 + 0.04)
   master.gain.exponentialRampToValueAtTime(0.0001, t0 + durationSec)
   master.connect(c.destination)
 
@@ -79,7 +110,6 @@ export function playSiren(durationSec = 1.6, force = false): void {
   oscA.frequency.linearRampToValueAtTime(1100, t0 + 0.35)
   oscA.frequency.linearRampToValueAtTime(740, t0 + 0.7)
   oscA.frequency.linearRampToValueAtTime(1100, t0 + 1.05)
-  oscA.frequency.linearRampToValueAtTime(740, t0 + 1.4)
   oscB.frequency.setValueAtTime(520, t0)
 
   const gA = c.createGain()
@@ -90,11 +120,14 @@ export function playSiren(durationSec = 1.6, force = false): void {
   oscB.connect(gB)
   gA.connect(master)
   gB.connect(master)
-
   oscA.start(t0)
   oscB.start(t0)
   oscA.stop(t0 + durationSec)
   oscB.stop(t0 + durationSec)
+}
+
+function phrase(limitKmh: number): string {
+  return `Baixa a velocidade para ${Math.round(limitKmh)} quilômetros por hora`
 }
 
 function pickPtBrVoice(): SpeechSynthesisVoice | null {
@@ -107,91 +140,116 @@ function pickPtBrVoice(): SpeechSynthesisVoice | null {
   )
 }
 
-export function speakSlowDown(limitKmh: number, force = false): void {
-  if (!('speechSynthesis' in window)) return
-  if (!unlocked && !force) return
-  const now = Date.now()
-  if (!force && now - lastVoiceAt < 3500) return
-  lastVoiceAt = now
-
+function speakNative(limitKmh: number): boolean {
+  if (!('speechSynthesis' in window)) return false
   try {
     window.speechSynthesis.cancel()
-  } catch {
-    /* ignore */
-  }
-
-  const text = `Atenção. Radar à frente. Diminua para ${Math.round(limitKmh)} quilômetros por hora.`
-  const u = new SpeechSynthesisUtterance(text)
-  u.lang = 'pt-BR'
-  u.rate = 1
-  u.pitch = 1
-  u.volume = 1
-  const voice = pickPtBrVoice()
-  if (voice) u.voice = voice
-
-  // iOS: às vezes precisa de um “kick” resume
-  try {
+    const u = new SpeechSynthesisUtterance(phrase(limitKmh))
+    u.lang = 'pt-BR'
+    u.rate = 0.95
+    u.pitch = 1
+    u.volume = 1
+    const voice = pickPtBrVoice()
+    if (voice) u.voice = voice
     window.speechSynthesis.resume()
+    window.speechSynthesis.speak(u)
+    window.setTimeout(() => {
+      try {
+        window.speechSynthesis.pause()
+        window.speechSynthesis.resume()
+      } catch {
+        /* ignore */
+      }
+    }, 60)
+    return true
   } catch {
-    /* ignore */
+    return false
   }
-  window.speechSynthesis.speak(u)
-
-  // Workaround iOS pause bug
-  window.setTimeout(() => {
-    try {
-      window.speechSynthesis.pause()
-      window.speechSynthesis.resume()
-    } catch {
-      /* ignore */
-    }
-  }, 40)
 }
 
-/** Botão "Testar alerta" — deve rodar no handler de click (gesto iOS). */
+/** Fallback TTS via áudio (mais confiável em alguns iPhones). */
+async function speakViaAudio(limitKmh: number): Promise<void> {
+  const text = phrase(limitKmh)
+  const url =
+    'https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=pt-BR&q=' +
+    encodeURIComponent(text)
+  try {
+    if (!ttsAudio) {
+      ttsAudio = new Audio()
+      ttsAudio.setAttribute('playsinline', 'true')
+    }
+    ttsAudio.pause()
+    ttsAudio.src = url
+    ttsAudio.currentTime = 0
+    await ttsAudio.play()
+  } catch {
+    // último recurso: native de novo
+    speakNative(limitKmh)
+  }
+}
+
+export async function speakSlowDown(
+  limitKmh: number,
+  force = false,
+): Promise<void> {
+  if (!unlocked && !force) return
+  const ok = speakNative(limitKmh)
+  // No iPhone, native às vezes “aceita” mas não sai som — reforça com TTS áudio
+  if (force || !ok) {
+    await speakViaAudio(limitKmh)
+  } else {
+    // Reforço após 700ms se ainda “falando” não for audível o suficiente
+    window.setTimeout(() => {
+      void speakViaAudio(limitKmh)
+    }, 900)
+  }
+}
+
 export async function testAlertNow(limitKmh = 60): Promise<void> {
   await unlockAudio()
-  playSiren(1.8, true)
-  // Voz no mesmo gesto do usuário (crítico no iPhone)
-  speakSlowDown(limitKmh, true)
+  playSiren(1.6, true)
+  await speakSlowDown(limitKmh, true)
 }
 
-export function handleRadarAlertAudio(alert: {
-  radar: { id: string; limitKmh: number }
-  level: AlertLevel
-  distanceM: number
-} | null): void {
-  if (!alert) return
-  if (!unlocked) return
+/**
+ * Sirene + voz só quando distanceM ≤ alertDistanceM.
+ * Uma fala por radar (até reset).
+ */
+export function handleRadarAlertAudio(
+  alert: {
+    radar: { id: string; limitKmh: number }
+    distanceM: number
+  } | null,
+  mySpeedKmh: number,
+): void {
+  if (!alert || !unlocked) return
+  if (alert.distanceM > alertDistanceM) return
 
-  const key = `${alert.radar.id}:${alert.level}`
-
-  if (alert.level === 'far' || alert.level === 'near' || alert.level === 'imminent') {
-    playSiren(alert.level === 'imminent' ? 1.8 : 1.3)
+  // Sirene se ainda acima do limite; se já reduziu, não fica gritanto
+  if (mySpeedKmh > alert.radar.limitKmh + 0.5) {
+    playSiren(1.5)
   }
 
-  // Fala uma vez por radar (nível near/imminent). Sem delay longo (quebra no iOS).
-  if (
-    (alert.level === 'near' || alert.level === 'imminent') &&
-    lastSpokenKey !== alert.radar.id
-  ) {
-    lastSpokenKey = alert.radar.id
-    speakSlowDown(alert.radar.limitKmh)
+  if (lastSpokenRadarId !== alert.radar.id) {
+    lastSpokenRadarId = alert.radar.id
+    void speakSlowDown(alert.radar.limitKmh)
   }
-
-  void key
 }
 
 export function resetAlertAudio(): void {
-  lastSpokenKey = null
+  lastSpokenRadarId = null
   lastSirenAt = 0
-  lastVoiceAt = 0
   if ('speechSynthesis' in window) {
     try {
       window.speechSynthesis.cancel()
     } catch {
       /* ignore */
     }
+  }
+  try {
+    ttsAudio?.pause()
+  } catch {
+    /* ignore */
   }
 }
 

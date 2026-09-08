@@ -90,10 +90,40 @@ body {
 .speed-stage {
   position: relative;
   flex: 1;
-  min-height: 280px;
-  display: grid;
-  place-items: center;
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
   animation: rise 0.85s 0.05s ease both;
+}
+
+.my-speed {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.my-speed-label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.my-speed strong {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.my-speed-unit {
+  font-size: 0.75rem;
 }
 
 .speed-ring {
@@ -103,29 +133,33 @@ body {
   display: grid;
   place-items: center;
   background:
-    radial-gradient(circle at 50% 45%, rgba(19, 40, 54, 0.9), rgba(7, 16, 24, 0.95) 70%),
+    radial-gradient(circle at 50% 45%, rgba(19, 40, 54, 0.92), rgba(7, 16, 24, 0.96) 70%),
     conic-gradient(from 210deg, var(--line), transparent 40%, var(--accent) 70%, var(--line));
   box-shadow:
     0 0 0 1px var(--line),
-    0 20px 60px rgba(0, 0, 0, 0.35),
-    inset 0 0 40px rgba(240, 180, 41, 0.05);
-  transition: box-shadow 0.35s ease, transform 0.35s ease;
-}
-
-.speed-ring.alert-near {
-  box-shadow:
-    0 0 0 1px rgba(255, 138, 61, 0.45),
-    0 0 40px rgba(255, 138, 61, 0.25),
     0 20px 60px rgba(0, 0, 0, 0.35);
-  animation: pulse-warn 1.2s ease-in-out infinite;
+  transition: box-shadow 0.3s ease, background 0.3s ease, transform 0.3s ease;
 }
 
-.speed-ring.alert-imminent {
+.speed-ring.ring-over {
+  background:
+    radial-gradient(circle at 50% 45%, rgba(60, 16, 16, 0.95), rgba(24, 6, 6, 0.98) 70%),
+    conic-gradient(from 210deg, rgba(255, 92, 92, 0.35), transparent 40%, var(--danger) 75%, rgba(255, 92, 92, 0.2));
   box-shadow:
-    0 0 0 1px rgba(255, 92, 92, 0.55),
-    0 0 50px rgba(255, 92, 92, 0.3),
+    0 0 0 2px rgba(255, 92, 92, 0.55),
+    0 0 50px rgba(255, 92, 92, 0.35),
     0 20px 60px rgba(0, 0, 0, 0.35);
   animation: pulse-danger 0.7s ease-in-out infinite;
+}
+
+.speed-ring.ring-ok {
+  background:
+    radial-gradient(circle at 50% 45%, rgba(12, 40, 28, 0.95), rgba(6, 20, 14, 0.98) 70%),
+    conic-gradient(from 210deg, rgba(62, 207, 142, 0.3), transparent 40%, var(--ok) 75%, rgba(62, 207, 142, 0.2));
+  box-shadow:
+    0 0 0 2px rgba(62, 207, 142, 0.5),
+    0 0 40px rgba(62, 207, 142, 0.28),
+    0 20px 60px rgba(0, 0, 0, 0.35);
 }
 
 .speed-inner {
@@ -133,10 +167,19 @@ body {
   padding: 24px;
 }
 
+.limit-label {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
 .speed-value {
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: clamp(4.2rem, 18vw, 5.5rem);
+  font-size: clamp(4.6rem, 20vw, 6rem);
   letter-spacing: -0.05em;
   line-height: 0.9;
   font-variant-numeric: tabular-nums;
@@ -151,24 +194,50 @@ body {
   font-weight: 600;
 }
 
-.meta-row {
+.dist-line {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.settings-panel,
+.sim-panel {
+  display: none;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(19, 40, 54, 0.5);
+}
+
+.settings-panel.open,
+.sim-panel.open {
+  display: grid;
+  animation: rise 0.35s ease both;
+}
+
+.settings-panel label,
+.sim-panel label {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
-  font-size: 0.82rem;
+  align-items: center;
+  font-size: 0.86rem;
   color: var(--muted);
 }
 
-.meta-row strong {
-  display: block;
-  color: var(--ink);
-  font-family: var(--font-display);
-  font-size: 1rem;
-  font-weight: 700;
-  margin-top: 2px;
+.settings-panel input[type='range'],
+.sim-panel input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.settings-panel .hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  opacity: 0.85;
 }
 
 .alert-banner {
@@ -296,33 +365,6 @@ button:disabled {
   color: #ffd0d0;
   border: 1px solid rgba(255, 92, 92, 0.35);
   grid-column: 1 / -1;
-}
-
-.sim-panel {
-  display: none;
-  gap: 8px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: rgba(19, 40, 54, 0.5);
-}
-
-.sim-panel.open {
-  display: grid;
-  animation: rise 0.35s ease both;
-}
-
-.sim-panel label {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.86rem;
-  color: var(--muted);
-}
-
-.sim-panel input[type='range'] {
-  width: 100%;
-  accent-color: var(--accent);
 }
 
 .status-line {

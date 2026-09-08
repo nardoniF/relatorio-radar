@@ -1,7 +1,9 @@
 import './style.css'
 import {
+  getAlertDistanceM,
   handleRadarAlertAudio,
   resetAlertAudio,
+  setAlertDistanceM,
   testAlertNow,
   unlockAudio,
 } from './alerts'
@@ -31,6 +33,7 @@ type UiState = {
   report: TripReport | null
   status: string
   error: string | null
+  alertDistanceM: number
 }
 
 const state: UiState = {
@@ -43,121 +46,114 @@ const state: UiState = {
   report: null,
   status: 'Escolha GPS real ou Simular no sofá.',
   error: null,
+  alertDistanceM: getAlertDistanceM(),
 }
 
 const tracker = new RadarTracker(RADARS)
 let gps: GpsEngine | null = null
 let sim: SimEngine | null = null
 
+function ringState(
+  speed: number,
+  alert: RadarAlert | null,
+): 'idle' | 'over' | 'ok' {
+  if (!alert) return 'idle'
+  return speed > alert.radar.limitKmh + 0.5 ? 'over' : 'ok'
+}
+
 function render(): void {
   const speed = state.lastSample?.speedKmh ?? 0
-  const alertClass = state.alert ? `active-${state.alert.level}` : ''
-  const ringClass = state.alert
-    ? state.alert.level === 'imminent'
-      ? 'alert-imminent'
-      : state.alert.level === 'near'
-        ? 'alert-near'
-        : ''
-    : ''
-
+  const limit = state.alert?.radar.limitKmh ?? null
+  const dist = state.alert ? Math.round(state.alert.distanceM) : null
+  const ring = ringState(speed, state.alert)
   const running = state.mode !== 'idle' && !state.report
   const showReport = Boolean(state.report)
+  const inAlertZone =
+    state.alert != null && state.alert.distanceM <= state.alertDistanceM
 
   app.innerHTML = `
     <div class="shell ${showReport ? 'report-open' : ''}">
       <header class="brand live-only">
         <h1>Relatório <span>Radar</span></h1>
-        <p>GPS, alerta com sirene e voz — “diminua para X km/h” — e relatório ao finalizar.</p>
+        <p>O círculo mostra o <strong>limite</strong>. Sua velocidade fica pequena em cima.</p>
       </header>
 
       <section class="speed-stage live-only" aria-live="polite">
-        <div class="speed-ring ${ringClass}">
+        <div class="my-speed" id="my-speed">
+          <span class="my-speed-label">Sua velocidade</span>
+          <strong id="my-speed-value">${formatKmh(speed)}</strong>
+          <span class="my-speed-unit">km/h</span>
+        </div>
+
+        <div class="speed-ring ring-${ring}" id="speed-ring">
           <div class="speed-inner">
-            <div class="speed-value">${formatKmh(speed)}</div>
+            <div class="limit-label">${limit != null ? 'Baixe para' : 'Limite'}</div>
+            <div class="speed-value" id="limit-value">${limit != null ? formatKmh(limit) : '—'}</div>
             <div class="speed-unit">km/h</div>
-            <div class="meta-row">
-              <div>
-                Limite
-                <strong>${state.alert ? state.alert.radar.limitKmh : '—'}</strong>
-              </div>
-              <div>
-                Distância
-                <strong>${state.alert ? `${Math.round(state.alert.distanceM)} m` : '—'}</strong>
-              </div>
+            <div class="dist-line" id="dist-line">
+              ${
+                dist != null
+                  ? inAlertZone
+                    ? `Radar a ${dist} m`
+                    : `Radar a ${dist} m · alerta em ${state.alertDistanceM} m`
+                  : 'Sem radar próximo'
+              }
             </div>
           </div>
         </div>
       </section>
 
-      <div class="alert-banner live-only ${alertClass}">
+      <div class="alert-banner live-only ${ring === 'over' ? 'active-imminent' : ring === 'ok' && state.alert ? 'active-far' : ''}">
         <div class="alert-dot" aria-hidden="true"></div>
         <div class="alert-copy">
           ${
             state.alert
-              ? `<strong>${alertTitle(state.alert)}</strong>
-                 <span>${state.alert.radar.name} · máx ${state.alert.radar.limitKmh} km/h</span>`
-              : `<strong>Sem radar próximo</strong>
-                 <span>${running ? 'Monitorando o percurso…' : 'Inicie uma viagem para monitorar.'}</span>`
+              ? `<strong>${ring === 'over' ? 'Acima do limite — reduza' : 'No limite ou abaixo'}</strong>
+                 <span>${state.alert.radar.name} · alvo ${state.alert.radar.limitKmh} km/h</span>`
+              : `<strong>Sem radar no alcance de alerta</strong>
+                 <span>${running ? 'Monitorando…' : 'Inicie uma viagem.'}</span>`
           }
         </div>
       </div>
 
       <div class="controls live-only">
         <div class="btn-row">
-          <button type="button" class="btn-primary" id="btn-gps" ${running ? 'disabled' : ''}>
-            GPS real
-          </button>
-          <button type="button" class="btn-secondary" id="btn-sim" ${running && state.mode !== 'sim' ? 'disabled' : ''}>
-            Simular no sofá
-          </button>
+          <button type="button" class="btn-primary" id="btn-gps" ${running ? 'disabled' : ''}>GPS real</button>
+          <button type="button" class="btn-secondary" id="btn-sim" ${running && state.mode !== 'sim' ? 'disabled' : ''}>Simular no sofá</button>
+        </div>
+
+        <div class="settings-panel open">
+          <label>
+            Sirene/voz a partir de
+            <strong id="alert-dist-label">${state.alertDistanceM} m</strong>
+          </label>
+          <input type="range" id="alert-dist" min="100" max="800" step="50" value="${state.alertDistanceM}" />
+          <p class="hint">Padrão 300 m. A voz diz: “Baixa a velocidade para X”.</p>
         </div>
 
         <div class="btn-row">
-          <button type="button" class="btn-secondary" id="btn-test-sound">
-            Testar sirene + voz
-          </button>
+          <button type="button" class="btn-secondary" id="btn-test-sound">Testar voz + sirene</button>
         </div>
 
         <div class="sim-panel ${state.mode === 'sim' && !state.report ? 'open' : ''}" id="sim-panel">
           <label>
-            Velocidade
+            Vel. simulação
             <strong id="sim-speed-label">${sim?.getSpeedKmh() ?? 90} km/h</strong>
           </label>
-          <input
-            type="range"
-            id="sim-speed"
-            min="30"
-            max="120"
-            step="5"
-            value="${sim?.getSpeedKmh() ?? 90}"
-            ${running ? '' : 'disabled'}
-          />
+          <input type="range" id="sim-speed" min="30" max="120" step="5" value="${sim?.getSpeedKmh() ?? 90}" ${running ? '' : 'disabled'} />
           <label>
-            Aceleração do tempo
+            Tempo
             <strong id="sim-scale-label">${sim?.getTimeScale() ?? 4}×</strong>
           </label>
-          <input
-            type="range"
-            id="sim-scale"
-            min="1"
-            max="10"
-            step="1"
-            value="${sim?.getTimeScale() ?? 4}"
-            ${running ? '' : 'disabled'}
-          />
+          <input type="range" id="sim-scale" min="1" max="10" step="1" value="${sim?.getTimeScale() ?? 4}" ${running ? '' : 'disabled'} />
         </div>
 
         <div class="btn-row">
-          <button type="button" class="btn-danger" id="btn-finish" ${running ? '' : 'disabled'}>
-            Finalizar
-          </button>
+          <button type="button" class="btn-danger" id="btn-finish" ${running ? '' : 'disabled'}>Finalizar</button>
         </div>
       </div>
 
-      <p class="status-line live-only ${state.error ? 'error' : ''}">
-        ${state.error ?? state.status}
-      </p>
-      <p class="status-line live-only" style="opacity:0.55;font-size:0.75rem">áudio v3 · se não ouvir, toque em Testar sirene + voz</p>
+      <p class="status-line live-only ${state.error ? 'error' : ''}">${state.error ?? state.status}</p>
 
       <section class="report ${showReport ? 'open' : ''}" aria-live="polite">
         ${showReport && state.report ? renderReport(state.report) : ''}
@@ -169,39 +165,20 @@ function render(): void {
   bindEvents()
 }
 
-function alertTitle(alert: RadarAlert): string {
-  if (alert.level === 'imminent') return 'Radar à frente — reduza'
-  if (alert.level === 'near') return 'Aproximando do radar'
-  return 'Radar no trecho'
-}
-
 function renderReport(report: TripReport): string {
   const overs = report.overs.length
   return `
     <h2>Viagem finalizada</h2>
     <div class="report-summary">
-      <div class="stat">
-        <em>Duração</em>
-        <strong>${formatDuration(report.durationMs)}</strong>
-      </div>
-      <div class="stat">
-        <em>Vel. máx</em>
-        <strong>${formatKmh(report.maxSpeedKmh)} km/h</strong>
-      </div>
-      <div class="stat">
-        <em>Radares passados</em>
-        <strong>${report.passages.length}</strong>
-      </div>
-      <div class="stat">
-        <em>Acima do limite</em>
-        <strong class="${overs ? 'bad' : 'good'}">${overs}</strong>
-      </div>
+      <div class="stat"><em>Duração</em><strong>${formatDuration(report.durationMs)}</strong></div>
+      <div class="stat"><em>Vel. máx</em><strong>${formatKmh(report.maxSpeedKmh)} km/h</strong></div>
+      <div class="stat"><em>Radares</em><strong>${report.passages.length}</strong></div>
+      <div class="stat"><em>Acima do limite</em><strong class="${overs ? 'bad' : 'good'}">${overs}</strong></div>
     </div>
-
     <ul class="passage-list">
       ${
         report.passages.length === 0
-          ? `<li><span class="detail">Nenhuma passagem por radar nesta viagem.</span></li>`
+          ? `<li><span class="detail">Nenhuma passagem por radar.</span></li>`
           : report.passages
               .map(
                 (p) => `
@@ -218,7 +195,6 @@ function renderReport(report: TripReport): string {
               .join('')
       }
     </ul>
-
     <div class="btn-row">
       <button type="button" class="btn-secondary" id="btn-copy">Copiar relatório</button>
       <button type="button" class="btn-primary" id="btn-new">Nova viagem</button>
@@ -233,12 +209,16 @@ function bindEvents(): void {
   document.getElementById('btn-new')?.addEventListener('click', resetTrip)
   document.getElementById('btn-copy')?.addEventListener('click', copyReport)
   document.getElementById('btn-test-sound')?.addEventListener('click', () => {
-    void testAlertNow(60).then(() => {
-      showToast('Sirene + voz disparados')
-      state.status = 'Áudio OK — agora use Simular no sofá'
-      const el = document.querySelector('.status-line')
-      if (el && !state.error) el.textContent = state.status
-    })
+    void testAlertNow(60).then(() => showToast('Falou: Baixa a velocidade para 60'))
+  })
+
+  const dist = document.getElementById('alert-dist') as HTMLInputElement | null
+  dist?.addEventListener('input', () => {
+    const v = Number(dist.value)
+    setAlertDistanceM(v)
+    state.alertDistanceM = getAlertDistanceM()
+    const label = document.getElementById('alert-dist-label')
+    if (label) label.textContent = `${state.alertDistanceM} m`
   })
 
   const range = document.getElementById('sim-speed') as HTMLInputElement | null
@@ -285,8 +265,7 @@ function beginTrip(mode: Exclude<TripMode, 'idle'>): void {
   state.alert = null
   state.report = null
   state.error = null
-  state.status =
-    mode === 'gps' ? 'Iniciando GPS…' : 'Simulação pronta — ajuste a velocidade se quiser.'
+  state.status = mode === 'gps' ? 'GPS…' : 'Simulação…'
   render()
 }
 
@@ -299,48 +278,61 @@ function onSample(sample: PositionSample): void {
   state.alert = alert
   state.passages = tracker.getPassages()
 
-  // Atualização leve do HUD sem re-render completo (melhor no iPhone)
   updateHud(sample, alert)
-  handleRadarAlertAudio(alert)
+  handleRadarAlertAudio(alert, sample.speedKmh)
 
   if (newPassage) {
     showToast(
       newPassage.overLimit
-        ? `${newPassage.radar.name}: ${formatKmh(newPassage.speedKmh)} km/h — acima do limite`
-        : `${newPassage.radar.name}: passagem OK`,
+        ? `${newPassage.radar.name}: ${formatKmh(newPassage.speedKmh)} km/h — acima`
+        : `${newPassage.radar.name}: OK`,
       newPassage.overLimit,
     )
   }
 }
 
 function updateHud(sample: PositionSample, alert: RadarAlert | null): void {
-  const speedEl = document.querySelector('.speed-value')
-  if (speedEl) speedEl.textContent = formatKmh(sample.speedKmh)
+  const speed = sample.speedKmh
+  const limit = alert?.radar.limitKmh ?? null
+  const dist = alert ? Math.round(alert.distanceM) : null
+  const ring = ringState(speed, alert)
+  const inAlertZone = alert != null && alert.distanceM <= state.alertDistanceM
 
-  const ring = document.querySelector('.speed-ring')
-  if (ring) {
-    ring.classList.remove('alert-near', 'alert-imminent')
-    if (alert?.level === 'near') ring.classList.add('alert-near')
-    if (alert?.level === 'imminent') ring.classList.add('alert-imminent')
+  const my = document.getElementById('my-speed-value')
+  if (my) my.textContent = formatKmh(speed)
+
+  const limitEl = document.getElementById('limit-value')
+  if (limitEl) limitEl.textContent = limit != null ? formatKmh(limit) : '—'
+
+  const ringEl = document.getElementById('speed-ring')
+  if (ringEl) ringEl.className = `speed-ring ring-${ring}`
+
+  const distEl = document.getElementById('dist-line')
+  if (distEl) {
+    distEl.textContent =
+      dist != null
+        ? inAlertZone
+          ? `Radar a ${dist} m`
+          : `Radar a ${dist} m · alerta em ${state.alertDistanceM} m`
+        : 'Sem radar próximo'
   }
+
+  const label = document.querySelector('.limit-label')
+  if (label) label.textContent = limit != null ? 'Baixe para' : 'Limite'
 
   const banner = document.querySelector('.alert-banner')
   if (banner) {
-    banner.className = `alert-banner live-only ${alert ? `active-${alert.level}` : ''}`
+    banner.className = `alert-banner live-only ${
+      ring === 'over' ? 'active-imminent' : ring === 'ok' && alert ? 'active-far' : ''
+    }`
     const copy = banner.querySelector('.alert-copy')
     if (copy) {
       copy.innerHTML = alert
-        ? `<strong>${alertTitle(alert)}</strong>
-           <span>${alert.radar.name} · máx ${alert.radar.limitKmh} km/h</span>`
-        : `<strong>Sem radar próximo</strong>
-           <span>Monitorando o percurso…</span>`
+        ? `<strong>${ring === 'over' ? 'Acima do limite — reduza' : 'No limite ou abaixo'}</strong>
+           <span>${alert.radar.name} · alvo ${alert.radar.limitKmh} km/h</span>`
+        : `<strong>Sem radar no alcance de alerta</strong>
+           <span>Monitorando…</span>`
     }
-  }
-
-  const metas = document.querySelectorAll('.meta-row strong')
-  if (metas.length >= 2) {
-    metas[0].textContent = alert ? String(alert.radar.limitKmh) : '—'
-    metas[1].textContent = alert ? `${Math.round(alert.distanceM)} m` : '—'
   }
 }
 
@@ -385,8 +377,7 @@ function startSim(): void {
   state.alert = null
   state.report = null
   state.error = null
-  state.status = 'Simulação · 90 km/h · 4× · áudio ligado'
-
+  state.status = 'Simulação · áudio liberado'
   sim = new SimEngine({
     onSample,
     onStatus: (message) => {
@@ -395,7 +386,7 @@ function startSim(): void {
       if (el && !state.error) el.textContent = message
     },
     onFinished: () => {
-      state.status = 'Fim do trecho simulado — toque em Finalizar.'
+      state.status = 'Fim do trecho — Finalizar'
       const el = document.querySelector('.status-line')
       if (el) el.textContent = state.status
     },
@@ -410,10 +401,7 @@ function finalizeTrip(): void {
   if (state.mode === 'idle' || !state.startedAt) return
   stopEngines()
   resetAlertAudio()
-
-  // Flush approaches still inside pass radius as passages
   if (state.lastSample) {
-    // force exit by updating with a far point
     tracker.update({
       ...state.lastSample,
       lat: state.lastSample.lat + 1,
@@ -421,17 +409,14 @@ function finalizeTrip(): void {
       at: Date.now(),
     })
   }
-
   const endedAt = Date.now()
-  const report = buildReport({
+  state.report = buildReport({
     mode: state.mode === 'sim' ? 'sim' : 'gps',
     startedAt: state.startedAt,
     endedAt,
     samples: state.samples,
     passages: tracker.getPassages(),
   })
-
-  state.report = report
   state.mode = 'idle'
   state.status = 'Relatório pronto.'
   state.alert = null
@@ -456,9 +441,8 @@ function resetTrip(): void {
 
 async function copyReport(): Promise<void> {
   if (!state.report) return
-  const text = reportToText(state.report)
   try {
-    await navigator.clipboard.writeText(text)
+    await navigator.clipboard.writeText(reportToText(state.report))
     showToast('Relatório copiado')
   } catch {
     showToast('Não foi possível copiar', true)
@@ -470,9 +454,7 @@ function showToast(message: string, bad = false): void {
   if (!toast) return
   toast.textContent = message
   toast.className = `toast show${bad ? ' bad' : ''}`
-  window.setTimeout(() => {
-    toast.classList.remove('show')
-  }, 2600)
+  window.setTimeout(() => toast.classList.remove('show'), 2600)
 }
 
 render()
