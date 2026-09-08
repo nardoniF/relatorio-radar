@@ -161,7 +161,7 @@ function render(): void {
             autocomplete="email"
             inputmode="email"
           />
-          <p class="hint">Ao finalizar, o Mail abre com o relatório. Confira e toque em Enviar.</p>
+          <p class="hint">Ao tocar Simular/GPS, deve falar “Monitoramento iniciado”. Ao finalizar, o Mail abre com o relatório.</p>
         </div>
 
         <div class="btn-row">
