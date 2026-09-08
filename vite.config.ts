@@ -1,9 +1,12 @@
 import { defineConfig } from 'vite'
 import mkcert from 'vite-plugin-mkcert'
 
-// HTTPS via mkcert — necessário para GPS no Safari (iPhone)
+// Em GitHub Pages o site fica em /relatorio-radar/
+const base = process.env.GITHUB_PAGES === '1' ? '/relatorio-radar/' : '/'
+
 export default defineConfig({
-  plugins: [mkcert()],
+  base,
+  plugins: process.env.GITHUB_PAGES === '1' ? [] : [mkcert()],
   server: {
     host: true,
     port: 5173,
