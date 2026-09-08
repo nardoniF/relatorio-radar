@@ -5,6 +5,7 @@ import {
   handleRadarAlertAudio,
   resetAlertAudio,
   setAlertDistanceM,
+  speakFined,
   testAlertNow,
 } from './alerts'
 import { RADARS } from './data/radars'
@@ -17,6 +18,7 @@ import type {
   PositionSample,
   Radar,
   RadarAlert,
+  RadarPassage,
   TripMode,
   TripReport,
 } from './types'
@@ -317,12 +319,15 @@ function onSample(sample: PositionSample): void {
   handleRadarAlertAudio(alert, sample.speedKmh)
 
   if (newPassage) {
-    showToast(
-      newPassage.overLimit
-        ? `${newPassage.radar.name}: ${formatKmh(newPassage.speedKmh)} km/h — acima`
-        : `${newPassage.radar.name}: OK`,
-      newPassage.overLimit,
-    )
+    if (newPassage.overLimit) {
+      void speakFined()
+      showToast(
+        `${newPassage.radar.name}: ${formatKmh(newPassage.speedKmh)} km/h — Você foi multado`,
+        true,
+      )
+    } else {
+      showToast(`${newPassage.radar.name}: OK`, false)
+    }
   }
 }
 

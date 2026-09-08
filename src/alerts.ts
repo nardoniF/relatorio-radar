@@ -173,18 +173,32 @@ function phrase(limitKmh: number): string {
   return `Baixa a velocidade para ${Math.round(limitKmh)} quilômetros por hora`
 }
 
-async function speakViaAudio(limitKmh: number): Promise<boolean> {
+async function speakText(text: string): Promise<boolean> {
   const audio = ensureTtsAudio()
   try {
-    // Para a fala de “Monitoramento iniciado” se ainda estiver tocando
     audio.pause()
-    audio.src = ttsUrl(phrase(limitKmh))
+    audio.src = ttsUrl(text)
     audio.currentTime = 0
     await audio.play()
     return true
   } catch {
-    return false
+    if (!('speechSynthesis' in window)) return false
+    try {
+      window.speechSynthesis.cancel()
+      const u = new SpeechSynthesisUtterance(text)
+      u.lang = 'pt-BR'
+      u.rate = 0.95
+      u.volume = 1
+      window.speechSynthesis.speak(u)
+      return true
+    } catch {
+      return false
+    }
   }
+}
+
+async function speakViaAudio(limitKmh: number): Promise<boolean> {
+  return speakText(phrase(limitKmh))
 }
 
 function speakNative(limitKmh: number): boolean {
@@ -212,15 +226,20 @@ export async function speakSlowDown(
   force = false,
 ): Promise<void> {
   if (!voiceArmed && !force) return
-  // Preferir HTMLAudio (depois do arm no gesto, funciona espontâneo no iOS)
   const ok = await speakViaAudio(limitKmh)
   if (!ok) speakNative(limitKmh)
+}
+
+/** Passou o radar acima do limite. */
+export async function speakFined(force = false): Promise<void> {
+  if (!voiceArmed && !force) return
+  playSiren(1.8, true)
+  await speakText('Você foi multado')
 }
 
 export async function testAlertNow(limitKmh = 60): Promise<void> {
   await armVoiceOnUserGesture()
   playSiren(1.6, true)
-  // Pequena pausa para não sobrepor “Monitoramento iniciado”
   await new Promise((r) => setTimeout(r, 700))
   await speakSlowDown(limitKmh, true)
 }
