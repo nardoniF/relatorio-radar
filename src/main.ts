@@ -6,6 +6,7 @@ import {
   resetAlertAudio,
   setAlertDistanceM,
   speakFined,
+  stopVoiceKeepAlive,
   testAlertNow,
 } from './alerts'
 import { RADARS } from './data/radars'
@@ -426,9 +427,10 @@ function updateHud(sample: PositionSample, alert: RadarAlert | null): void {
 }
 
 async function startGps(): Promise<void> {
+  // Reset ANTES do unlock — nunca pausar o TTS depois do gesto
+  resetAlertAudio()
   // Mesmo gesto do toque — libera voz espontânea no iPhone
   await armVoiceOnUserGesture()
-  resetAlertAudio()
   beginTrip('gps')
   gps = new GpsEngine({
     onSample,
@@ -455,8 +457,8 @@ async function startGps(): Promise<void> {
 }
 
 async function startSim(): Promise<void> {
-  await armVoiceOnUserGesture()
   resetAlertAudio()
+  await armVoiceOnUserGesture()
   stopEngines()
   tracker.reset()
   state.mode = 'sim'
@@ -496,6 +498,7 @@ function finalizeTrip(): void {
 
   stopEngines()
   resetAlertAudio()
+  stopVoiceKeepAlive()
   if (state.lastSample) {
     tracker.update({
       ...state.lastSample,
@@ -556,6 +559,7 @@ async function shareReport(): Promise<void> {
 function resetTrip(): void {
   stopEngines()
   resetAlertAudio()
+  stopVoiceKeepAlive()
   tracker.reset()
   state.mode = 'idle'
   state.startedAt = null
