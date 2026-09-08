@@ -286,6 +286,9 @@ function bindEvents(): void {
   })
 
   const emailInput = document.getElementById('report-email') as HTMLInputElement | null
+  emailInput?.addEventListener('input', () => {
+    setReportEmail(emailInput.value)
+  })
   emailInput?.addEventListener('change', () => {
     setReportEmail(emailInput.value)
   })
@@ -426,7 +429,13 @@ function updateHud(sample: PositionSample, alert: RadarAlert | null): void {
   }
 }
 
+function persistEmailFromDom(): void {
+  const emailInput = document.getElementById('report-email') as HTMLInputElement | null
+  if (emailInput) setReportEmail(emailInput.value)
+}
+
 async function startGps(): Promise<void> {
+  persistEmailFromDom()
   // Reset ANTES do unlock — nunca pausar o TTS depois do gesto
   resetAlertAudio()
   // Mesmo gesto do toque — libera voz espontânea no iPhone
@@ -457,6 +466,7 @@ async function startGps(): Promise<void> {
 }
 
 async function startSim(): Promise<void> {
+  persistEmailFromDom()
   resetAlertAudio()
   await armVoiceOnUserGesture()
   stopEngines()
@@ -493,8 +503,7 @@ function finalizeTrip(): void {
   if (state.mode === 'idle' || !state.startedAt) return
 
   // Salva e-mail digitado antes de re-render (campo some no relatório)
-  const emailInput = document.getElementById('report-email') as HTMLInputElement | null
-  if (emailInput) setReportEmail(emailInput.value)
+  persistEmailFromDom()
 
   stopEngines()
   resetAlertAudio()
