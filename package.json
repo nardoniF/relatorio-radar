@@ -1,0 +1,20 @@
+{
+  "name": "relatorio-radar",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Piloto web HTTPS: GPS, alerta de radares e relatório ao finalizar",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview --host",
+    "smoke": "tsx scripts/smoke-sim.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsx": "^4.23.13",
+    "typescript": "~5.7.2",
+    "vite": "^6.2.0",
+    "vite-plugin-mkcert": "^1.17.8"
+  }
+}

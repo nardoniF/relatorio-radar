@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>pt-BR</string>
+	<key>CFBundleDisplayName</key>
+	<string>Relatório Radar</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<!--
+	Background Modes → Location updates
+	Necessário para continuar recebendo CLLocation enquanto o app está em segundo plano
+	durante uma viagem ativa. Combinar com:
+	- NSLocationAlwaysAndWhenInUseUsageDescription
+	- allowsBackgroundLocationUpdates = true (só com autorização "Sempre")
+	- showsBackgroundLocationIndicator = true
+	Habilitar em: Target → Signing & Capabilities → Background Modes → Location updates
+	-->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>O Relatório Radar usa sua localização durante a viagem para monitorar velocidade, limites e proximidade de radares no mesmo sentido.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Precisamos de localização “Sempre” para manter o monitoramento de conformidade viária em segundo plano enquanto você dirige, mesmo com a tela bloqueada.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>A localização em segundo plano permite continuar o monitoramento da viagem e gerar o relatório ao finalizar.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>O movimento do dispositivo pode ajudar no modo automático futuro (não exigido no MVP).</string>
+</dict>
+</plist>
