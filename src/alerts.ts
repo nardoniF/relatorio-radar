@@ -1,27 +1,30 @@
 /**
  * Alertas: sirene + voz "Baixa a velocidade para X".
- * Distância configurável (default 300 m).
  *
- * iOS Safari/PWA: só libera HTMLAudio + AudioContext no gesto do usuário.
- * Ordem crítica: desbloquear com áudio LOCAL (data-URI) ANTES de qualquer
- * await de rede; NÃO pausar o elemento de TTS depois do unlock.
+ * POR QUE a voz remota falhava no iPhone:
+ * Google Translate TTS devolve 404 no Safari iOS → play() falha →
+ * speechSynthesis só fala DENTRO do gesto do toque (por isso o Testar
+ * “funcionava” e o alerta espontâneo não).
+ *
+ * Solução: MP3 locais em /voice/ (mesmo origem). Desbloqueia no toque
+ * de Simular/GPS tocando um arquivo local; depois o iOS deixa tocar os outros.
  */
 
 const STORAGE_KEY = 'radar_alert_distance_m'
 
-/** MP3 silencioso curto — unlock confiável no iOS sem rede. */
-const SILENT_MP3 =
-  'data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA//////////////////////////////////////////////////////////////////8AAAA8TEFNRTMuMTAwBLgAAAAAAAAAABUgJAUHQQAB9gAAAnGRqtmyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+const LIMITS = [40, 50, 60, 70, 80, 90, 100, 110, 120] as const
 
 let audioCtx: AudioContext | null = null
 let unlocked = false
 let voiceArmed = false
 let lastSpokenRadarId: string | null = null
+let lastSlowDownAt = 0
 let lastSirenAt = 0
 let alertDistanceM = loadDistance()
 let ttsAudio: HTMLAudioElement | null = null
 let keepAliveAudio: HTMLAudioElement | null = null
 let speaking = false
+const preloaded = new Map<string, HTMLAudioElement>()
 
 function loadDistance(): number {
   const raw = localStorage.getItem(STORAGE_KEY)
@@ -36,6 +39,32 @@ export function getAlertDistanceM(): number {
 export function setAlertDistanceM(m: number): void {
   alertDistanceM = Math.min(1000, Math.max(50, Math.round(m)))
   localStorage.setItem(STORAGE_KEY, String(alertDistanceM))
+}
+
+function baseUrl(): string {
+  const base = import.meta.env.BASE_URL || '/'
+  return base.endsWith('/') ? base : `${base}/`
+}
+
+function voiceUrl(file: string): string {
+  return `${baseUrl()}voice/${file}`
+}
+
+function nearestLimit(limitKmh: number): (typeof LIMITS)[number] {
+  let best: (typeof LIMITS)[number] = 60
+  let bestDiff = Infinity
+  for (const n of LIMITS) {
+    const d = Math.abs(n - limitKmh)
+    if (d < bestDiff) {
+      best = n
+      bestDiff = d
+    }
+  }
+  return best
+}
+
+function clipForSlowDown(limitKmh: number): string {
+  return `baixa_${nearestLimit(limitKmh)}.mp3`
 }
 
 function getCtx(): AudioContext {
@@ -55,7 +84,6 @@ function ensureTtsAudio(): HTMLAudioElement {
     ttsAudio.setAttribute('playsinline', 'true')
     ttsAudio.setAttribute('webkit-playsinline', 'true')
     ttsAudio.preload = 'auto'
-    // iOS: volume > 0 no gesto ajuda a manter a sessão de áudio
     ttsAudio.volume = 1
   }
   return ttsAudio
@@ -63,20 +91,13 @@ function ensureTtsAudio(): HTMLAudioElement {
 
 function ensureKeepAlive(): HTMLAudioElement {
   if (!keepAliveAudio) {
-    keepAliveAudio = new Audio(SILENT_MP3)
+    keepAliveAudio = new Audio(voiceUrl('silence.mp3'))
     keepAliveAudio.setAttribute('playsinline', 'true')
     keepAliveAudio.loop = true
     keepAliveAudio.volume = 0.01
     keepAliveAudio.preload = 'auto'
   }
   return keepAliveAudio
-}
-
-function ttsUrl(text: string): string {
-  return (
-    'https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=pt-BR&q=' +
-    encodeURIComponent(text)
-  )
 }
 
 function playBeep(): void {
@@ -95,37 +116,100 @@ function playBeep(): void {
   osc.stop(t0 + 0.13)
 }
 
+/** Pré-carrega clips locais durante o gesto (iOS libera o buffer). */
+function preloadVoiceClips(): void {
+  const files = [
+    'monitoramento.mp3',
+    'multado.mp3',
+    ...LIMITS.map((n) => `baixa_${n}.mp3`),
+  ]
+  for (const file of files) {
+    if (preloaded.has(file)) continue
+    const a = new Audio()
+    a.setAttribute('playsinline', 'true')
+    a.preload = 'auto'
+    a.src = voiceUrl(file)
+    try {
+      a.load()
+    } catch {
+      /* ignore */
+    }
+    preloaded.set(file, a)
+  }
+}
+
+function waitEnded(audio: HTMLAudioElement, timeoutMs = 12000): Promise<void> {
+  return new Promise((resolve) => {
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      audio.removeEventListener('ended', finish)
+      audio.removeEventListener('error', finish)
+      resolve()
+    }
+    audio.addEventListener('ended', finish)
+    audio.addEventListener('error', finish)
+    window.setTimeout(finish, timeoutMs)
+  })
+}
+
+async function playLocalClip(file: string): Promise<boolean> {
+  const audio = ensureTtsAudio()
+  speaking = true
+  try {
+    // Garante sessão ativa
+    try {
+      const c = getCtx()
+      if (c.state === 'suspended') await c.resume()
+    } catch {
+      /* ignore */
+    }
+
+    audio.pause()
+    audio.src = voiceUrl(file)
+    audio.load()
+    audio.currentTime = 0
+    await audio.play()
+    await waitEnded(audio)
+    speaking = false
+    return true
+  } catch {
+    speaking = false
+    return false
+  }
+}
+
 /**
  * OBRIGATÓRIO no click de Simular/GPS/Testar (mesmo gesto do usuário).
- * Sem isso o iPhone bloqueia fala espontânea.
  */
 export async function armVoiceOnUserGesture(): Promise<void> {
   const c = getCtx()
-  // resume() síncrono no início do gesto — não esperar rede antes
   try {
-    if (c.state === 'suspended') {
-      const p = c.resume()
-      // Não bloqueia o unlock local se resume demorar
-      void p
-    }
+    if (c.state === 'suspended') void c.resume()
   } catch {
     /* ignore */
   }
 
   playBeep()
+  preloadVoiceClips()
 
-  // 1) Unlock HTMLAudio com MP3 local — SEM rede (gesto ainda válido)
-  const audio = ensureTtsAudio()
-  try {
-    audio.pause()
-    audio.src = SILENT_MP3
-    audio.currentTime = 0
-    await audio.play()
-  } catch {
-    /* ignore */
+  // Unlock tocando áudio LOCAL no mesmo gesto — não depende de Google TTS
+  const ok = await playLocalClip('monitoramento.mp3')
+  if (!ok) {
+    // Última tentativa: speechSynthesis só vale AQUI (dentro do gesto)
+    try {
+      if ('speechSynthesis' in window) {
+        const u = new SpeechSynthesisUtterance('Monitoramento iniciado')
+        u.lang = 'pt-BR'
+        u.volume = 1
+        window.speechSynthesis.speak(u)
+      }
+    } catch {
+      /* ignore */
+    }
   }
 
-  // 2) Keep-alive silencioso em loop — evita o iOS “dormir” a sessão
   try {
     const keep = ensureKeepAlive()
     keep.currentTime = 0
@@ -136,9 +220,6 @@ export async function armVoiceOnUserGesture(): Promise<void> {
 
   unlocked = true
   voiceArmed = true
-
-  // Confirmação falada em paralelo — não atrasa o início da viagem
-  void speakText('Monitoramento iniciado')
 }
 
 /** @deprecated use armVoiceOnUserGesture */
@@ -186,140 +267,27 @@ export function playSiren(durationSec = 1.5, force = false): void {
   oscB.stop(t0 + durationSec)
 }
 
-function phrase(limitKmh: number): string {
-  return `Baixa a velocidade para ${Math.round(limitKmh)} quilômetros por hora`
-}
-
-function waitEnded(audio: HTMLAudioElement, timeoutMs = 12000): Promise<void> {
-  return new Promise((resolve) => {
-    let done = false
-    const finish = () => {
-      if (done) return
-      done = true
-      audio.removeEventListener('ended', finish)
-      audio.removeEventListener('error', finish)
-      resolve()
-    }
-    audio.addEventListener('ended', finish)
-    audio.addEventListener('error', finish)
-    window.setTimeout(finish, timeoutMs)
-  })
-}
-
-async function speakText(text: string): Promise<boolean> {
-  if (speaking) {
-    try {
-      ensureTtsAudio().pause()
-    } catch {
-      /* ignore */
-    }
-  }
-  speaking = true
-  const audio = ensureTtsAudio()
-
-  // Preferência: HTMLAudio (desbloqueado no gesto) — speechSynthesis no iOS
-  // costuma falhar fora do toque.
-  try {
-    audio.pause()
-    audio.src = ttsUrl(text)
-    audio.load()
-    audio.currentTime = 0
-    const playPromise = audio.play()
-    await playPromise
-    await waitEnded(audio)
-    speaking = false
-    return true
-  } catch {
-    /* cai para speechSynthesis */
-  }
-
-  if ('speechSynthesis' in window) {
-    try {
-      window.speechSynthesis.cancel()
-      const u = new SpeechSynthesisUtterance(text)
-      u.lang = 'pt-BR'
-      u.rate = 0.95
-      u.volume = 1
-      const voices = window.speechSynthesis.getVoices()
-      const pt =
-        voices.find((v) => /pt-BR/i.test(v.lang)) ||
-        voices.find((v) => /^pt/i.test(v.lang))
-      if (pt) u.voice = pt
-      await new Promise<void>((resolve) => {
-        u.onend = () => resolve()
-        u.onerror = () => resolve()
-        window.speechSynthesis.speak(u)
-        window.setTimeout(resolve, 8000)
-      })
-      speaking = false
-      return true
-    } catch {
-      speaking = false
-      return false
-    }
-  }
-
-  speaking = false
-  return false
-}
-
-async function speakViaAudio(limitKmh: number): Promise<boolean> {
-  return speakText(phrase(limitKmh))
-}
-
-function speakNative(limitKmh: number): boolean {
-  if (!('speechSynthesis' in window)) return false
-  try {
-    window.speechSynthesis.cancel()
-    const u = new SpeechSynthesisUtterance(phrase(limitKmh))
-    u.lang = 'pt-BR'
-    u.rate = 0.95
-    u.volume = 1
-    const voices = window.speechSynthesis.getVoices()
-    const pt =
-      voices.find((v) => /pt-BR/i.test(v.lang)) ||
-      voices.find((v) => /^pt/i.test(v.lang))
-    if (pt) u.voice = pt
-    window.speechSynthesis.speak(u)
-    return true
-  } catch {
-    return false
-  }
-}
-
 export async function speakSlowDown(
   limitKmh: number,
   force = false,
 ): Promise<void> {
   if (!voiceArmed && !force) return
-  // Reativa contexto se o iOS suspendeu em background
-  try {
-    const c = getCtx()
-    if (c.state === 'suspended') await c.resume()
-  } catch {
-    /* ignore */
-  }
-  try {
-    const keep = ensureKeepAlive()
-    if (keep.paused) void keep.play()
-  } catch {
-    /* ignore */
-  }
-  const ok = await speakViaAudio(limitKmh)
-  if (!ok) speakNative(limitKmh)
+  if (speaking && !force) return
+  lastSlowDownAt = Date.now()
+  await playLocalClip(clipForSlowDown(limitKmh))
 }
 
 /** Passou o radar acima do limite. */
 export async function speakFined(force = false): Promise<void> {
   if (!voiceArmed && !force) return
   playSiren(1.8, true)
-  await speakText('Você foi multado')
+  await playLocalClip('multado.mp3')
 }
 
 export async function testAlertNow(limitKmh = 60): Promise<void> {
   await armVoiceOnUserGesture()
   playSiren(1.6, true)
-  await new Promise((r) => setTimeout(r, 700))
+  await new Promise((r) => setTimeout(r, 500))
   await speakSlowDown(limitKmh, true)
 }
 
@@ -333,11 +301,15 @@ export function handleRadarAlertAudio(
   if (!alert || !voiceArmed) return
   if (alert.distanceM > alertDistanceM) return
 
-  if (mySpeedKmh > alert.radar.limitKmh + 0.5) {
-    playSiren(1.5)
-  }
+  const over = mySpeedKmh > alert.radar.limitKmh + 0.5
+  if (over) playSiren(1.5)
 
-  if (lastSpokenRadarId !== alert.radar.id) {
+  const now = Date.now()
+  const firstForRadar = lastSpokenRadarId !== alert.radar.id
+  // Repete “baixa a velocidade” enquanto acima do limite (~7 s)
+  const shouldRepeat = over && now - lastSlowDownAt > 7000
+
+  if (firstForRadar || shouldRepeat) {
     lastSpokenRadarId = alert.radar.id
     void speakSlowDown(alert.radar.limitKmh)
   }
@@ -345,11 +317,12 @@ export function handleRadarAlertAudio(
 
 /**
  * Limpa estado da viagem (radares falados).
- * NÃO pausa o HTMLAudio de TTS nem desarma a voz — isso quebrava o unlock do iOS.
+ * NÃO pausa o HTMLAudio de TTS nem desarma a voz.
  */
 export function resetAlertAudio(): void {
   lastSpokenRadarId = null
   lastSirenAt = 0
+  lastSlowDownAt = 0
   if ('speechSynthesis' in window) {
     try {
       window.speechSynthesis.cancel()
@@ -359,7 +332,6 @@ export function resetAlertAudio(): void {
   }
 }
 
-/** Para keep-alive ao finalizar viagem (opcional). */
 export function stopVoiceKeepAlive(): void {
   try {
     keepAliveAudio?.pause()
