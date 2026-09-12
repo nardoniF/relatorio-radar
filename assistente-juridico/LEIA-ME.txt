@@ -1,0 +1,35 @@
+COMO INSTALAR (leia se a janela sumir)
+======================================
+
+1) EXTRAIR O ZIP
+   - Botao direito no AssistenteJuridico-Windows.zip
+   - "Extrair tudo..."
+   - Entre na pasta extraida (deve ter app.py + pasta static)
+
+2) NAO PRECISA DE ADMINISTRADOR
+   - Clique NORMAL em Iniciar.bat (dois cliques)
+   - Se o Windows pedir permissao, escolha "Mais informacoes"
+     > "Executar mesmo assim" (SmartScreen) — ainda SEM admin
+
+3) SE A JANELA SUMIR
+   - Use: Iniciar_janela_fixa.bat
+   - Ou tire print do erro ANTES de apertar tecla
+
+4) PYTHON
+   https://www.python.org/downloads/
+   Marque: Add python.exe to PATH
+
+5) IA (SEM ISTO NAO ANALISA)
+   https://console.groq.com/keys  > Create API Key (gsk_...)
+   No site do programa: Ajustes > Groq gratuito > colar chave > Salvar > Testar IA
+   Modelo certo: openai/gpt-oss-120b
+
+6) USO
+   Escolher PDF > Usar este > gerar peca
+   Word + PDF ficam em:
+   Documentos\Assistente Juridico\Processos\
+
+7) SE SO CRIA PASTA E NAO ANALISA
+   - Abra Ajustes e confira se a chave esta salva
+   - Clique "Testar IA"
+   - Se falhar, troque o plano para Groq gratuito e salve de novo
