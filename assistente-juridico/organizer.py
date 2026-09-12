@@ -22,15 +22,18 @@ DEFAULT_CONFIG = {
     "enviar_tudo": False,
 }
 
-# Modelos antigos → substituto atual (análise parava com 404 silencioso na prática).
+# Modelos antigos / inadequados no free → 20B (120B estoura TPM em PDF grande).
 LEGACY_MODELS = {
-    "llama-3.3-70b-versatile": "openai/gpt-oss-120b",
-    "llama-3.1-70b-versatile": "openai/gpt-oss-120b",
+    "llama-3.3-70b-versatile": "openai/gpt-oss-20b",
+    "llama-3.1-70b-versatile": "openai/gpt-oss-20b",
     "llama-3.1-8b-instant": "openai/gpt-oss-20b",
-    "llama3-70b-8192": "openai/gpt-oss-120b",
+    "llama3-70b-8192": "openai/gpt-oss-20b",
     "llama3-8b-8192": "openai/gpt-oss-20b",
-    "mixtral-8x7b-32768": "openai/gpt-oss-120b",
+    "mixtral-8x7b-32768": "openai/gpt-oss-20b",
     "gemma2-9b-it": "openai/gpt-oss-20b",
+    # 120B no plano free quebra processo grande (TPM 8k) — força 20B
+    "openai/gpt-oss-120b": "openai/gpt-oss-20b",
+    "gpt-oss-120b": "openai/gpt-oss-20b",
 }
 
 PRESETS = {
@@ -44,11 +47,11 @@ PRESETS = {
     },
     "groq_quality": {
         "provider": "groq",
-        "provider_label": "Groq — gratuito 120B (mais qualidade, menos tokens)",
-        "model": "openai/gpt-oss-120b",
+        "provider_label": "Groq — 120B (NÃO use em PDF grande no free)",
+        "model": "openai/gpt-oss-20b",  # forçado: 120B free quebra TPM
         "base_url": "https://api.groq.com/openai/v1",
-        "custo": "Grátis (TPM baixo — use envio inteligente)",
-        "nota": "Melhor texto, mas limite ~8k tokens/min. Não envia PDF inteiro.",
+        "custo": "Grátis — redirecionado para 20B",
+        "nota": "120B free estoura em processo grande; o sistema usa 20B.",
     },
     "groq_fast": {
         "provider": "groq",
@@ -120,18 +123,24 @@ def ensure_dirs() -> None:
 
 
 def _migrate_model(data: dict) -> tuple[dict, bool]:
-    """Troca modelos Groq aposentados; retorna (data, mudou)."""
+    """Troca modelos Groq aposentados / 120B free; retorna (data, mudou)."""
     changed = False
     model = (data.get("model") or data.get("openai_model") or "").strip()
+    base = (data.get("base_url") or "").lower()
+    provider = (data.get("provider") or "").lower()
     if model in LEGACY_MODELS:
         data["model"] = LEGACY_MODELS[model]
         changed = True
-    base = (data.get("base_url") or "").lower()
-    if "groq.com" in base and model and model in LEGACY_MODELS:
-        data["model"] = LEGACY_MODELS[model]
+        model = data["model"]
+    # Qualquer *120b* no Groq free → 20B (TPM 8k não aguenta PDF grande)
+    if ("groq.com" in base or provider == "groq") and "120b" in model.lower():
+        data["model"] = "openai/gpt-oss-20b"
+        data["provider"] = "groq"
+        data["provider_label"] = "Groq — gratuito 20B (auto)"
+        data["base_url"] = "https://api.groq.com/openai/v1"
+        data["enviar_tudo"] = False
         changed = True
-    # Config sem model mas com provider groq → default atual
-    if (data.get("provider") or "").lower() == "groq" and not (data.get("model") or "").strip():
+    if (provider == "groq" or "groq.com" in base) and not (data.get("model") or "").strip():
         data["model"] = DEFAULT_CONFIG["model"]
         changed = True
     return data, changed
