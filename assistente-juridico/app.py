@@ -20,7 +20,7 @@ import prompts
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 CACHE_NAME = "extrato.json"
-EXTRACT_VERSION = 4
+EXTRACT_VERSION = 5
 
 app = FastAPI(title="Assistente Jurídico")
 app.mount("/ui", StaticFiles(directory=STATIC), name="static")

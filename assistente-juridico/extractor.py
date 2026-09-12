@@ -157,14 +157,15 @@ def extract_process(pdf_path: Path, max_chars: int | None = None) -> dict:
     try:
         meta = extract_cover_meta(doc)
         n_pages = doc.page_count
-        # PDFs enormes (1000+ págs): extrato menor — Groq free não aguenta 30k+ tokens
+        # Enviar o máximo possível do PDF (pedido: tudo sempre).
+        # Limite alto só por memória; GPT/OpenAI aguenta contexto grande.
         if max_chars is None:
             if n_pages >= 800:
-                max_chars = 80_000
+                max_chars = 900_000
             elif n_pages >= 300:
-                max_chars = 160_000
+                max_chars = 700_000
             else:
-                max_chars = 350_000
+                max_chars = 550_000
 
         pages: list[str] = []
         index: list[dict] = []
@@ -190,23 +191,23 @@ def extract_process(pdf_path: Path, max_chars: int | None = None) -> dict:
         big = n_pages >= 400
         huge = n_pages >= 800
 
-        # Inicial (primeiras páginas) — menor em PDF gigante
-        for i in range(min(12 if huge else (20 if big else 35), len(pages))):
+        # Inicial — com "enviar tudo", pega mais páginas
+        for i in range(min(40 if huge else 50, len(pages))):
             wanted.add(i)
 
-        # Sentença, contestação, ata: janela ao redor do índice
+        # Sentença, contestação, ata: janela ampla
         for item in compact:
             p = item["page"] - 1
             if item["tipo"] == "SENTENÇA":
-                span = 10 if huge else (14 if big else 18)
+                span = 30 if huge else 40
             elif item["tipo"] in ("CONTESTAÇÃO", "ATA DE AUDIÊNCIA"):
-                span = 6 if huge else (10 if big else 14)
+                span = 20 if huge else 25
             else:
-                span = 4 if huge else (8 if big else 12)
+                span = 15 if huge else 20
             for j in range(max(0, p), min(len(pages), p + span)):
                 wanted.add(j)
 
-        # Comprovantes: em PDF enorme, só os de maior score (não todas as páginas)
+        # Comprovantes: incluir o máximo relevante
         payment_pages: list[dict] = []
         for i, (sc, hits) in enumerate(page_scores):
             if sc >= 3:
@@ -214,7 +215,7 @@ def extract_process(pdf_path: Path, max_chars: int | None = None) -> dict:
                     payment_pages.append({"page": i + 1, "score": sc, "marcadores": hits[:12]})
 
         payment_pages.sort(key=lambda x: (-x["score"], x["page"]))
-        pay_cap = 25 if huge else (50 if big else 200)
+        pay_cap = 200 if huge else 300
         for p in payment_pages[:pay_cap]:
             i = p["page"] - 1
             wanted.add(i)
@@ -265,19 +266,19 @@ def extract_process(pdf_path: Path, max_chars: int | None = None) -> dict:
         rest = sorted(wanted - set(pay_idx) - set(sent_idx) - set(defesa_idx) - set(oral_idx))
 
         if sent_idx:
-            sections.append(block("SENTENÇA / DISPOSITIVO (prioridade)", sent_idx[: (25 if huge else 50)]))
+            sections.append(block("SENTENÇA / DISPOSITIVO (prioridade)", sent_idx[:120]))
         if pay_idx:
             sections.append(
                 block(
                     "COMPROVANTES — TRCT, RECIBOS, HOLERITES, FGTS, PONTO",
-                    pay_idx[: (30 if huge else 60)],
+                    pay_idx[:200],
                 )
             )
         if defesa_idx:
-            sections.append(block("CONTESTAÇÃO E DOCUMENTOS DA RÉ", defesa_idx[: (15 if huge else 40)]))
+            sections.append(block("CONTESTAÇÃO E DOCUMENTOS DA RÉ", defesa_idx[:80]))
         if oral_idx:
-            sections.append(block("PROVA ORAL — ATAS", oral_idx[: (10 if huge else 25)]))
-        sections.append(block("INICIAL E DEMAIS TRECHOS", rest[: (20 if huge else 60)]))
+            sections.append(block("PROVA ORAL — ATAS", oral_idx[:50]))
+        sections.append(block("INICIAL E DEMAIS TRECHOS", rest[:150]))
 
         blob = "\n".join(sections)
         truncated = False
@@ -291,7 +292,7 @@ def extract_process(pdf_path: Path, max_chars: int | None = None) -> dict:
             "paginas_selecionadas": len(wanted),
             "paginas_comprovante": len(pay_idx),
             "truncado": truncated,
-            "versao": 4,
+            "versao": 5,
             "max_chars": max_chars,
         }
         return {"meta": meta, "texto": blob, "paginas": doc.page_count}
@@ -299,33 +300,36 @@ def extract_process(pdf_path: Path, max_chars: int | None = None) -> dict:
         doc.close()
 
 
-# Quanto de extrato mandar por tipo de peça (não precisa do PDF inteiro).
-# Ordem: inventário + sentença + comprovantes já vêm no início do blob.
+# Quanto de extrato mandar por tipo de peça.
+# Pedido do usuário: enviar TUDO sempre (processos grandes com GPT/OpenAI).
+# None = sem corte por tipo (manda o extrato completo montado do PDF).
 ACTION_CHAR_BUDGET = {
-    "resumo": 12_000,
-    "jurisprudencia": 8_000,
-    "recurso": 14_000,
-    "defesa": 12_000,
-    "contrarrazoes": 12_000,
-    "replica": 10_000,
-    "alegacoes_finais": 12_000,
-    "embargos": 8_000,
-    "impugnacao_laudo": 10_000,
-    "impugnacao_calculos": 12_000,
-    "manifestacao": 8_000,
-    "acordo": 6_000,
-    "peticao": 8_000,
-    "personalizado": 12_000,
+    "resumo": None,
+    "jurisprudencia": None,
+    "recurso": None,
+    "defesa": None,
+    "contrarrazoes": None,
+    "replica": None,
+    "alegacoes_finais": None,
+    "embargos": None,
+    "impugnacao_laudo": None,
+    "impugnacao_calculos": None,
+    "manifestacao": None,
+    "acordo": None,
+    "peticao": None,
+    "personalizado": None,
 }
 
 
 def slice_for_action(texto: str, tipo: str, *, max_chars: int | None = None) -> str:
-    """Recorta o extrato para a peça pedida — não reenvia o processo inteiro."""
-    budget = max_chars or ACTION_CHAR_BUDGET.get(tipo, 12_000)
+    """Por padrão devolve o extrato inteiro (enviar tudo sempre).
+
+    Se max_chars for passado (ou budget numérico), aí recorta.
+    """
     t = texto or ""
-    if len(t) <= budget:
+    budget = max_chars if max_chars is not None else ACTION_CHAR_BUDGET.get(tipo)
+    if budget is None or len(t) <= budget:
         return t
-    # Preferir bloco de sentença + comprovantes se existirem no extrato montado
     prefer = []
     for marker in (
         "=== SENTENÇA",
@@ -343,8 +347,4 @@ def slice_for_action(texto: str, tipo: str, *, max_chars: int | None = None) -> 
             chunk = t[:budget]
     else:
         chunk = t[:budget]
-    return (
-        chunk
-        + "\n\n[Extrato parcial de propósito: não é necessário enviar o PDF "
-        "inteiro a cada peça. Priorizados sentença e comprovantes.]"
-    )
+    return chunk + "\n\n[Extrato parcial — limite técnico do provedor.]"

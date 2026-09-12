@@ -45,24 +45,26 @@ def complete(system: str, user: str, *, temperature: float = 0.2) -> str:
     key = cfg["api_key"]
     if not key:
         raise LlmError(
-            "Falta a chave da IA. Abra Ajustes, escolha Groq (gratuito), "
-            "cole a chave de console.groq.com/keys e salve."
+            "Falta a chave da IA. Abra Ajustes: Groq (gsk_...) ou OpenAI/GPT (sk-...). "
+            "ChatGPT Plus no site NÃO serve — precisa chave de API em platform.openai.com/api-keys."
         )
     model = cfg["model"]
     base = cfg["base_url"]
-    # Groq free: TPM baixo (~8k no 120B). 1 token ≈ 3–4 chars em PT-BR.
-    # Manter pedido bem abaixo de 8k tokens (sistema + usuário + folga).
+    # Groq free: TPM baixo. OpenAI/GPT: contexto grande — enviar tudo.
     if "groq.com" in base:
         max_chars = 14_000 if "120b" in model.lower() else 22_000
         max_out = 4096 if "120b" in model.lower() else 6144
+    elif "openai.com" in base:
+        # GPT pago: manda o extrato quase inteiro
+        max_chars = 900_000
+        max_out = 16384
     else:
         max_chars = 450_000
         max_out = 8192
     if len(user) > max_chars:
         user = (
             user[:max_chars]
-            + "\n\n[…texto cortado pelo limite gratuito da IA — "
-            "priorizados sentença e comprovantes no início do extrato…]"
+            + "\n\n[…texto cortado só por limite técnico do provedor…]"
         )
     payload = {
         "model": model,
@@ -71,9 +73,8 @@ def complete(system: str, user: str, *, temperature: float = 0.2) -> str:
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
+        "max_tokens": max_out,
     }
-    if "groq.com" in base:
-        payload["max_tokens"] = max_out
 
     with httpx.Client(timeout=300.0) as client:
         r = client.post(

@@ -1,0 +1,47 @@
+COMO USAR GPT (OpenAI) NO ASSISTENTE JURIDICO
+==============================================
+
+IMPORTANTE
+----------
+Assinatura ChatGPT Plus / Team / Pro no site chat.openai.com
+NAO serve neste programa.
+
+O Assistente precisa de uma CHAVE DE API (sk-...), criada em:
+  https://platform.openai.com/api-keys
+
+Essa chave gasta CREDITO da conta OpenAI (pago por uso),
+nao o "ChatGPT assinado" da prima.
+
+
+PASSOS (com a conta que vai pagar a API)
+----------------------------------------
+1) Abra https://platform.openai.com/api-keys
+   (entre com a conta OpenAI que tem credito / cartao)
+
+2) Create new secret key > copie (sk-...)
+
+3) Se pedir faturamento: https://platform.openai.com/settings/organization/billing
+   Coloque credito (ex.: US$ 10 ja da para testar varios processos)
+
+4) No Assistente Juridico:
+   Ajustes
+   > Plano: "OpenAI GPT-4.1 mini" (bom e mais barato) ou "GPT-4.1"
+   > Cole a chave sk-...
+   > Salvar
+   > Testar IA  (tem que dar OK)
+
+5) Clique na peca (Resumo, Recurso, etc.)
+   Com GPT, o programa ENVIA O EXTRATO COMPLETO do processo.
+
+
+SE A PRIMA SO TEM CHATGPT PLUS
+------------------------------
+Ela precisa criar/ativar a API na mesma conta (Billing) ou
+usar outra conta com credito. Sem chave sk-..., o programa
+nao consegue falar com o GPT.
+
+
+GROQ (gratis) x GPT (pago)
+--------------------------
+- Groq: gratis, mas processo de 1000+ paginas estoura limite
+- GPT API: pago, aguenta mandar o processo grande inteiro

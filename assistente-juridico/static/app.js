@@ -208,7 +208,7 @@ async function runAcao(tipo, label) {
     return;
   }
   if (!config?.has_key) {
-    setStatus("Sem chave da IA. Abra Ajustes → Groq → cole a chave → Salvar → Testar IA.", "err");
+    setStatus("Sem chave da IA. Abra Ajustes → OpenAI GPT ou Groq → cole a chave → Salvar → Testar IA.", "err");
     $("dlg-ajustes").showModal();
     return;
   }

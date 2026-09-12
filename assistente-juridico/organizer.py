@@ -73,11 +73,27 @@ PRESETS = {
     },
     "openai_mini": {
         "provider": "openai",
-        "provider_label": "OpenAI GPT-4.1 mini",
+        "provider_label": "OpenAI GPT-4.1 mini (pago — recomendado p/ processo grande)",
         "model": "gpt-4.1-mini",
         "base_url": "https://api.openai.com/v1",
-        "custo": "Pago — precisa crédito OpenAI.",
-        "nota": "Pago — precisa crédito OpenAI.",
+        "custo": "Pago por uso (API). ChatGPT Plus NÃO serve — precisa chave sk-...",
+        "nota": "Crie chave em platform.openai.com/api-keys (conta com crédito). Envia extrato completo.",
+    },
+    "openai_41": {
+        "provider": "openai",
+        "provider_label": "OpenAI GPT-4.1 (pago — melhor qualidade)",
+        "model": "gpt-4.1",
+        "base_url": "https://api.openai.com/v1",
+        "custo": "Pago por uso (API). Mais caro que o mini.",
+        "nota": "Melhor para peça complexa. Chave sk-... em platform.openai.com/api-keys.",
+    },
+    "openai_4o": {
+        "provider": "openai",
+        "provider_label": "OpenAI GPT-4o (pago)",
+        "model": "gpt-4o",
+        "base_url": "https://api.openai.com/v1",
+        "custo": "Pago por uso (API).",
+        "nota": "Alternativa. ChatGPT assinado no site NÃO é a mesma coisa que a API.",
     },
 }
 
