@@ -87,11 +87,19 @@ def complete(system: str, user: str, *, temperature: float = 0.2) -> str:
             low = body.lower()
             hint = ""
             if r.status_code in (401, 403):
-                hint = " Verifique a chave (Groq: console.groq.com/keys)."
+                if "openai.com" in base:
+                    hint = (
+                        " Chave OpenAI inválida ou sem crédito. "
+                        "Revogue a antiga, crie outra em platform.openai.com/api-keys "
+                        "(precisa Billing com crédito; ChatGPT Plus sozinho não basta), "
+                        "cole a sk-... nova aqui, Salvar e Testar de novo."
+                    )
+                else:
+                    hint = " Verifique a chave Groq em console.groq.com/keys (gsk_...)."
             elif r.status_code == 404 or "does not exist" in low or "model_not_found" in low:
                 hint = (
                     f" Modelo '{model}' indisponível. Abra Ajustes e escolha "
-                    "Groq — gratuito (openai/gpt-oss-120b) ou Groq — rápido (20B)."
+                    "OpenAI GPT-4.1 mini / GPT-4.1, ou Groq gratuito."
                 )
                 if model in LEGACY_MODELS or "llama" in model.lower() or "mixtral" in model.lower():
                     novo = LEGACY_MODELS.get(model, DEFAULT_CONFIG["model"])
@@ -106,13 +114,17 @@ def complete(system: str, user: str, *, temperature: float = 0.2) -> str:
                 or "request too large" in low
                 or "tokens per minute" in low
             ):
-                hint = (
-                    " Processo grande demais para o limite gratuito deste modelo. "
-                    "Espere 1 minuto e tente de novo, ou em Ajustes escolha "
-                    "«Groq — rápido (20B)» (aceita pedido maior). "
-                    "O programa já envia só trechos (não o PDF inteiro); "
-                    "se ainda falhar, use o modelo 20B."
-                )
+                if "openai.com" in base:
+                    hint = (
+                        " Limite/cota da OpenAI. Confira crédito em "
+                        "platform.openai.com (Billing) ou espere e tente de novo."
+                    )
+                else:
+                    hint = (
+                        " Processo grande demais para o Groq gratuito. "
+                        "Em Ajustes escolha «OpenAI GPT-4.1 mini» (pago, envia tudo) "
+                        "ou «Groq — rápido (20B)» e espere 1 minuto."
+                    )
             raise LlmError(f"A API devolveu erro {r.status_code}: {body}{hint}")
         data = r.json()
     try:
