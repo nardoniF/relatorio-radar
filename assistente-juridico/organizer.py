@@ -15,8 +15,11 @@ DEFAULT_CONFIG = {
     "provider": "groq",
     "provider_label": "Groq (gratuito)",
     "api_key": "",
-    "model": "openai/gpt-oss-120b",
+    # 20B: melhor margem de TPM no plano gratuito para processo grande
+    "model": "openai/gpt-oss-20b",
     "base_url": "https://api.groq.com/openai/v1",
+    # False = envio inteligente (não sobe PDF/texto inteiro na API)
+    "enviar_tudo": False,
 }
 
 # Modelos antigos → substituto atual (análise parava com 404 silencioso na prática).
@@ -33,11 +36,19 @@ LEGACY_MODELS = {
 PRESETS = {
     "groq_free": {
         "provider": "groq",
-        "provider_label": "Groq — gratuito (recomendado sem cartão)",
-        "model": "openai/gpt-oss-120b",
+        "provider_label": "Groq — gratuito 20B (recomendado p/ PDF grande)",
+        "model": "openai/gpt-oss-20b",
         "base_url": "https://api.groq.com/openai/v1",
         "custo": "Grátis (com limites diários de uso)",
-        "nota": "Crie chave em console.groq.com/keys. Modelo atual: openai/gpt-oss-120b.",
+        "nota": "PDF fica no PC; a API só recebe trechos (envio inteligente).",
+    },
+    "groq_quality": {
+        "provider": "groq",
+        "provider_label": "Groq — gratuito 120B (mais qualidade, menos tokens)",
+        "model": "openai/gpt-oss-120b",
+        "base_url": "https://api.groq.com/openai/v1",
+        "custo": "Grátis (TPM baixo — use envio inteligente)",
+        "nota": "Melhor texto, mas limite ~8k tokens/min. Não envia PDF inteiro.",
     },
     "groq_fast": {
         "provider": "groq",
@@ -45,7 +56,7 @@ PRESETS = {
         "model": "openai/gpt-oss-20b",
         "base_url": "https://api.groq.com/openai/v1",
         "custo": "Grátis (limites diários)",
-        "nota": "Mais rápido / menor contexto — bom para resumo curto.",
+        "nota": "Alias do gratuito 20B.",
     },
     "google_flash": {
         "provider": "google",

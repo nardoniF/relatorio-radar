@@ -1,0 +1,30 @@
+ENVIO INTELIGENTE — COMO FUNCIONA
+=================================
+
+1) O PDF do processo É SALVO no PC:
+   Documentos\Assistente Juridico\Processos\[nome_do_caso]\processo.pdf
+
+2) O programa LÊ o PDF uma vez e guarda um extrato de texto na pasta
+   (extrato.json). Isso NÃO sobe para a internet ainda.
+
+3) Quando você clica em Resumo, Recurso, Contestação, etc.:
+   - NÃO envia o PDF (nem as 1232 páginas)
+   - Monta um PACOTE PEQUENO com as seções mais úteis
+     (sentença, comprovantes/TRCT, inventário…)
+   - Só esse texto curto vai para a API (Groq grátis ou OpenAI)
+
+4) API gratuita (Groq)
+   - Limite baixo de tokens (~8 mil/min no 120B)
+   - Por isso o envio inteligente é OBRIGATÓRIO
+   - Use o plano "Groq — gratuito 20B" para PDF grande
+
+5) ChatGPT Plus no site
+   - Lá você sobe o PDF no chat (até centenas de MB)
+   - Isso NÃO é a mesma coisa que a API deste programa
+   - Para o Assistente usar GPT: chave sk-... + crédito na API
+
+RESUMO
+------
+PDF grande → fica no diretório.
+IA → recebe só trechos escolhidos por tipo de peça.
+Assim a API gratuita consegue analisar sem estourar limite.

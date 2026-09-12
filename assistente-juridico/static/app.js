@@ -229,8 +229,11 @@ async function runAcao(tipo, label) {
     fd.append("salvar_aprendizado", $("salvar-aprendizado").checked ? "1" : "0");
     const data = await api("/api/acao", { method: "POST", body: fd });
     const files = [data.arquivo_docx, data.arquivo_pdf].filter(Boolean).join(" + ");
-    setStatus(`Pronto: ${files} em ${data.pasta}`, "ok");
+    const env = data.envio || {};
+    const envMsg = env.aviso ? ` · ${env.aviso}` : "";
+    setStatus(`Pronto: ${files} em ${data.pasta}${envMsg}`, "ok");
     $("resultado").textContent =
+      (env.aviso ? `[${env.aviso}]\n\n` : "") +
       (data.texto || "").slice(0, 12000) +
       ((data.texto || "").length > 12000 ? "\n\n[…texto cortado na tela; arquivo completo na pasta]" : "");
     await loadCasos(id);

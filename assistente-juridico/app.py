@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 import docx_out
+import envio
 import extractor
 import llm
 import memory
@@ -250,15 +251,23 @@ def acao(
             "(provavelmente escaneado/imagem). Exporte o processo com texto "
             "selecionável no PJe (não só imagem) e importe de novo.",
         )
-    # OpenAI: extrato completo. Groq: corta (TPM ~8k).
+    # PDF fica no disco. A API só recebe trechos (envio inteligente).
     cfg = organizer.load_config()
     base = (cfg.get("base_url") or "").lower()
+    # Groq/grátis = smart. OpenAI pago pode full se enviar_tudo=true.
+    envio_modo = "full" if ("openai.com" in base and cfg.get("enviar_tudo")) else "smart"
     if "groq.com" in base:
         model = (cfg.get("model") or "").lower()
-        budget = 10_000 if "120b" in model else 18_000
-        texto = extractor.slice_for_action(texto_full, tipo, max_chars=budget)
+        budget = 9_000 if "120b" in model else 16_000
+        pacote = envio.slice_for_action(texto_full, tipo, max_chars=budget, mode="smart")
     else:
-        texto = extractor.slice_for_action(texto_full, tipo)  # None = tudo
+        pacote = envio.slice_for_action(
+            texto_full,
+            tipo,
+            max_chars=None if envio_modo == "full" else envio.ACTION_CHAR_BUDGET.get(tipo),
+            mode=envio_modo,
+        )
+    texto = pacote["texto"]
     titulo, _, base_name = ACTION_MAP[tipo]
     # Se já salvou no aprendizado, combined_instructions já inclui o extra.
     user_prompt = _build_user_prompt(case, tipo, meta, texto, "" if learn else extra)
@@ -281,6 +290,15 @@ def acao(
 
     files = _persist_peca(case, tipo, titulo, body, base_name, learned)
 
+    envio_info = {
+        "modo": pacote["modo"],
+        "chars": pacote["chars"],
+        "secoes": pacote["secoes"],
+        "aviso": pacote["aviso"],
+        "pdf_local": True,
+        "pdf_na_api": False,
+    }
+
     if modo == "chat":
         return {
             "ok": True,
@@ -292,6 +310,7 @@ def acao(
             "arquivos": files,
             "prompts_usados": learned,
             "sugestao_arquivo": files["docx"],
+            "envio": envio_info,
         }
 
     return {
@@ -304,6 +323,7 @@ def acao(
         "pasta": str(case),
         "meta": meta,
         "prompts_usados": learned,
+        "envio": envio_info,
     }
 
 
@@ -342,7 +362,16 @@ def refinar(
 
     data = _load_or_extract(case, refresh=False)
     meta = data.get("meta") or {}
-    texto_autos = extractor.slice_for_action(data.get("texto") or "", tipo)
+    cfg = organizer.load_config()
+    base = (cfg.get("base_url") or "").lower()
+    model = (cfg.get("model") or "").lower()
+    budget = 8_000 if "groq.com" in base and "120b" in model else 12_000
+    if "openai.com" in base and cfg.get("enviar_tudo"):
+        texto_autos = (data.get("texto") or "")[:200_000]
+    else:
+        texto_autos = envio.slice_for_action(
+            data.get("texto") or "", tipo, max_chars=budget, mode="smart"
+        )["texto"]
     learned = memory.combined_instructions(case, tipo, "")
 
     refine_prompt = f"""Reescreva a peça abaixo aplicando o feedback do advogado.
