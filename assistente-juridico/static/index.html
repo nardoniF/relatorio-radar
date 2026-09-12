@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Assistente Jurídico</title>
+  <link rel="stylesheet" href="/ui/styles.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="brand-mark">AJ</span>
+      <div>
+        <h1>Assistente Jurídico</h1>
+        <p class="sub">Processos · peças · aprendizado</p>
+      </div>
+    </div>
+    <nav>
+      <button type="button" id="btn-ajustes" class="ghost">Ajustes</button>
+    </nav>
+  </header>
+
+  <div id="banner" class="banner hide" role="status"></div>
+
+  <main class="layout">
+    <section class="panel" aria-labelledby="sec-import">
+      <h2 id="sec-import">1. Processo</h2>
+      <p class="hint">Escolha o PDF do PJe. O programa cria a pasta em Documentos → Assistente Jurídico → Processos.</p>
+      <div class="row">
+        <input type="file" id="pdf" accept="application/pdf,.pdf" />
+        <button type="button" id="btn-importar" class="primary">Usar este</button>
+      </div>
+      <label class="block">
+        Processos nesta máquina
+        <select id="casos"></select>
+      </label>
+      <div class="row wrap">
+        <button type="button" id="btn-abrir" class="ghost">Abrir pasta</button>
+        <button type="button" id="btn-atualizar" class="ghost">Atualizar lista</button>
+      </div>
+      <pre id="meta" class="meta"></pre>
+    </section>
+
+    <section class="panel" aria-labelledby="sec-acoes">
+      <h2 id="sec-acoes">2. Análise / peça</h2>
+      <p class="hint">Precisa da chave Groq em Ajustes. Sem chave, só a pasta é criada.</p>
+      <label class="block">
+        Diálogo / instruções extras (opcional)
+        <textarea id="instrucoes" rows="3" placeholder="Ex.: foque em férias e intervalo; cite páginas do TRCT…"></textarea>
+      </label>
+      <label class="check">
+        <input type="checkbox" id="salvar-aprendizado" checked />
+        Salvar o que eu escrever como aprendizado deste processo
+      </label>
+      <div id="acoes" class="acoes"></div>
+      <div class="row wrap">
+        <button type="button" id="btn-refinar" class="secondary">Refinar última peça</button>
+      </div>
+      <div id="status" class="status" aria-live="polite"></div>
+      <pre id="resultado" class="resultado"></pre>
+    </section>
+  </main>
+
+  <dialog id="dlg-ajustes">
+    <form method="dialog" id="form-ajustes">
+      <h2>Ajustes da IA</h2>
+      <p class="hint">Sem chave, o programa organiza pastas mas <strong>não analisa</strong>.</p>
+      <label class="block">
+        Plano
+        <select id="preset"></select>
+      </label>
+      <label class="block">
+        Chave API (Groq: começa com gsk_…)
+        <input type="password" id="api_key" autocomplete="off" placeholder="Cole a chave aqui" />
+      </label>
+      <p id="key-info" class="muted"></p>
+      <label class="block">
+        Modelo
+        <input type="text" id="model" />
+      </label>
+      <label class="block">
+        Base URL
+        <input type="text" id="base_url" />
+      </label>
+      <p class="muted" id="processos-path"></p>
+      <div class="row wrap">
+        <button type="submit" value="salvar" class="primary">Salvar</button>
+        <button type="button" id="btn-testar" class="secondary">Testar IA</button>
+        <button type="submit" value="fechar" class="ghost">Fechar</button>
+      </div>
+      <p id="ajuste-msg" class="status"></p>
+    </form>
+  </dialog>
+
+  <script src="/ui/app.js"></script>
+</body>
+</html>

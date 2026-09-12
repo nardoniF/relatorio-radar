@@ -1,0 +1,64 @@
+ASSISTENTE JURIDICO (Windows)
+================================
+
+IA gratuita: Groq (console.groq.com/keys) — chave gsk_...
+Modelo atual: openai/gpt-oss-120b  (o antigo llama-3.3 foi desligado em ago/2026)
+
+Cada acao gera na pasta do processo:
+  1) processo.pdf
+  2) NomeDaPeca.docx  (editar)
+  3) NomeDaPeca.pdf   (enviar)
+
+Prompts do processo e aprendizado global ficam salvos automaticamente.
+
+
+1) O QUE MANDAR NO WHATSAPP
+---------------------------
+So o arquivo: AssistenteJuridico-Windows.zip
+NAO mande PDF de processo no Zap (e enorme).
+
+
+2) INSTALAR NO PC DELA (Windows)
+--------------------------------
+A) Python (primeira vez)
+   https://www.python.org/downloads/
+   Marcar: Add python.exe to PATH > Install Now
+
+B) Programa
+   1. Extrair o zip (Extrair tudo)
+   2. Dois cliques em Iniciar.bat
+   3. Deixar a janela preta ABERTA
+   4. Navegador abre em http://127.0.0.1:8765
+   5. (Opcional) Atalho do Iniciar.bat na Area de Trabalho
+
+
+3) LIGAR A IA (OBRIGATORIO PARA ANALISAR)
+-----------------------------------------
+IMPORTANTE: sem chave, o programa SO cria pasta e copia o PDF.
+As analises / pecas NAO rodam sem a chave.
+
+1. https://console.groq.com/keys
+2. Criar conta > Create API Key > copiar (gsk_...)
+3. No programa: Ajustes > plano "Groq — gratuito" > colar chave > Salvar
+4. Clicar "Testar IA" — tem que aparecer OK
+5. Se der erro de modelo: escolha "Groq — gratuito" de novo e Salvar
+
+
+4) USO
+------
+Escolher PDF > Usar este > (opcional) dialogo > clicar na peca
+Word + PDF saem em:
+  Documentos \ Assistente Juridico \ Processos \ [caso]
+
+Refinar: escreva o que faltou no dialogo > "Refinar ultima peca"
+
+
+5) PROBLEMAS
+------------
+- Cria pasta mas nao analisa: falta chave OU modelo antigo — Ajustes > Groq > Testar IA
+- Falta chave: Ajustes > gsk_...
+- Erro 429: limite gratis do Groq — espere e tente de novo
+- Erro 404 / model does not exist: Ajustes > Groq gratuito (gpt-oss-120b) > Salvar
+- PDF sem texto (escaneado): exporte do PJe com texto selecionavel
+- Python nao encontrado: reinstalar com PATH
+- Janela preta fechou: o site para — abra Iniciar.bat de novo
