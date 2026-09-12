@@ -1,0 +1,32 @@
+CORRECAO RAPIDA (sem baixar ZIP)
+================================
+
+O antivírus bloqueia o ZIP. Não precisa do ZIP se o programa já abre.
+
+A) No navegador do Assistente Jurídico:
+   1. Clique em Ajustes (canto superior direito)
+   2. Em Modelo, apague o que estiver e cole exatamente:
+      openai/gpt-oss-120b
+   3. Confirme que a chave Groq está salva (começa com gsk_)
+   4. Salvar
+   5. Se tiver botão Testar IA, clique
+   6. Volte, ROLE A PAGINA PARA BAIXO e clique em Resumo / Recurso / etc.
+
+B) Se Ajustes não deixar mudar o modelo, edite o arquivo:
+   Documentos\Assistente Juridico\config.json
+
+   Abra com Bloco de Notas e deixe assim (mantenha sua chave):
+
+   {
+     "provider": "groq",
+     "provider_label": "Groq (gratuito)",
+     "api_key": "COLE_SUA_CHAVE_gsk_AQUI",
+     "model": "openai/gpt-oss-120b",
+     "base_url": "https://api.groq.com/openai/v1"
+   }
+
+   Salve o arquivo, feche o Bloco de Notas, volte no navegador e tente a peça de novo.
+
+C) Se o Windows ainda quiser o ZIP novo:
+   Segurança do Windows > Proteção contra vírus > Histórico de proteção
+   > em AssistenteJuridico-Windows.zip > Ações > Permitir
