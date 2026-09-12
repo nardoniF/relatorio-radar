@@ -253,18 +253,21 @@ def acao(
         )
     # PDF fica no disco. A API só recebe trechos (envio inteligente).
     cfg = organizer.load_config()
-    base = (cfg.get("base_url") or "").lower()
-    # Groq/grátis = smart. OpenAI pago pode full se enviar_tudo=true.
+    base = (cfg.get("base_url") or cfg.get("base_url") or "").lower()
+    provider = (cfg.get("provider") or "").lower()
+    is_groq = "groq.com" in base or provider == "groq"
+    # Groq/grátis = smart SEMPRE. OpenAI só full se enviar_tudo=true.
     envio_modo = "full" if ("openai.com" in base and cfg.get("enviar_tudo")) else "smart"
-    if "groq.com" in base:
-        model = (cfg.get("model") or "").lower()
-        budget = 9_000 if "120b" in model else 16_000
+    model = (cfg.get("model") or "").lower()
+    if is_groq:
+        # 120B free = orçamento mínimo; 20B aguenta um pouco mais
+        budget = 5_000 if "120b" in model else 12_000
         pacote = envio.slice_for_action(texto_full, tipo, max_chars=budget, mode="smart")
     else:
         pacote = envio.slice_for_action(
             texto_full,
             tipo,
-            max_chars=None if envio_modo == "full" else envio.ACTION_CHAR_BUDGET.get(tipo),
+            max_chars=None if envio_modo == "full" else envio.ACTION_CHAR_BUDGET.get(tipo, 10_000),
             mode=envio_modo,
         )
     texto = pacote["texto"]

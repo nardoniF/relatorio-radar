@@ -13,7 +13,6 @@ def _cfg() -> dict:
     raw = load_config()
     defaults = DEFAULT_CONFIG
     provider = raw.get("provider") or defaults["provider"]
-    # compatibilidade com configs antigas (só OpenAI)
     api_key = (raw.get("api_key") or raw.get("openai_api_key") or "").strip()
     model = raw.get("model") or raw.get("openai_model") or defaults["model"]
     if model in LEGACY_MODELS:
@@ -40,33 +39,62 @@ def configured() -> bool:
     return bool(_cfg()["api_key"])
 
 
+def _is_groq(base: str, provider: str = "") -> bool:
+    b = (base or "").lower()
+    p = (provider or "").lower()
+    return "groq.com" in b or p == "groq"
+
+
 def complete(system: str, user: str, *, temperature: float = 0.2) -> str:
     cfg = _cfg()
     key = cfg["api_key"]
     if not key:
         raise LlmError(
             "Falta a chave da IA. Abra Ajustes: Groq (gsk_...) ou OpenAI/GPT (sk-...). "
-            "ChatGPT Plus no site NÃO serve — precisa chave de API em platform.openai.com/api-keys."
+            "ChatGPT Plus no site NÃO serve — precisa chave de API."
         )
     model = cfg["model"]
     base = cfg["base_url"]
-    # Groq free: TPM ~8k no 120B — cortar forte.
-    # OpenAI/GPT: contexto grande — enviar o extrato quase inteiro.
-    if "groq.com" in base:
-        max_chars = 10_000 if "120b" in model.lower() else 18_000
-        max_out = 3072 if "120b" in model.lower() else 4096
-    elif "openai.com" in base:
-        max_chars = 900_000
+    provider = cfg["provider"]
+
+    # LIMITE DURO — Groq free 120B = 8000 TPM. Pedido de 32k estoura sempre.
+    # ~3–4 chars/token em PT-BR. Reserva sistema + saída.
+    if _is_groq(base, provider):
+        # Se ainda estiver no 120B, força orçamento mínimo (quase obrigatório no free).
+        if "120b" in model.lower() or "70b" in model.lower():
+            max_user = 5_500
+            max_system = 2_000
+            max_out = 2048
+        else:
+            max_user = 12_000
+            max_system = 2_500
+            max_out = 3072
+    elif "openai.com" in (base or "").lower():
+        max_user = 900_000
+        max_system = 20_000
         max_out = 16384
     else:
-        max_chars = 450_000
+        max_user = 450_000
+        max_system = 10_000
         max_out = 8192
-    if len(user) > max_chars:
+
+    if len(system) > max_system:
+        system = system[:max_system] + "\n[…sistema truncado…]"
+    if len(user) > max_user:
         user = (
-            user[:max_chars]
-            + "\n\n[…texto cortado pelo limite do provedor atual "
-            f"({ 'Groq gratuito' if 'groq.com' in base else 'API' })…]"
+            user[:max_user]
+            + "\n\n[…TEXTO CORTADO pelo limite gratuito da API. "
+            "O PDF completo continua só no seu PC. "
+            "Use Groq 20B em Ajustes para caber mais trechos…]"
         )
+
+    # Segurança extra: conta grosseira de tokens (chars/3) < 7500 no Groq
+    if _is_groq(base, provider):
+        while (len(system) + len(user)) // 3 > 7_000 and len(user) > 2_000:
+            user = user[: int(len(user) * 0.85)]
+        if (len(system) + len(user)) // 3 > 7_000:
+            user = user[:3_000]
+
     payload = {
         "model": model,
         "temperature": temperature,
@@ -91,24 +119,22 @@ def complete(system: str, user: str, *, temperature: float = 0.2) -> str:
                 if "openai.com" in base:
                     hint = (
                         " Chave OpenAI inválida ou sem crédito. "
-                        "Revogue a antiga, crie outra em platform.openai.com/api-keys "
-                        "(precisa Billing com crédito; ChatGPT Plus sozinho não basta), "
-                        "cole a sk-... nova aqui, Salvar e Testar de novo."
+                        "Crie sk-... em platform.openai.com/api-keys com Billing."
                     )
                 else:
                     hint = " Verifique a chave Groq em console.groq.com/keys (gsk_...)."
             elif r.status_code == 404 or "does not exist" in low or "model_not_found" in low:
                 hint = (
-                    f" Modelo '{model}' indisponível. Abra Ajustes e escolha "
-                    "OpenAI GPT-4.1 mini / GPT-4.1, ou Groq gratuito."
+                    f" Modelo '{model}' indisponível. Em Ajustes escolha "
+                    "Groq 20B (gratuito) ou OpenAI GPT-4.1 mini."
                 )
-                if model in LEGACY_MODELS or "llama" in model.lower() or "mixtral" in model.lower():
+                if model in LEGACY_MODELS or "llama" in model.lower():
                     novo = LEGACY_MODELS.get(model, DEFAULT_CONFIG["model"])
                     try:
                         save_config({"model": novo})
                     except Exception:
                         pass
-                    hint += f" Já atualizei a config para '{novo}' — clique de novo na peça."
+                    hint += f" Já mudei para '{novo}' — clique de novo."
             elif (
                 r.status_code in (413, 429)
                 or "rate_limit" in low
@@ -119,24 +145,36 @@ def complete(system: str, user: str, *, temperature: float = 0.2) -> str:
             ):
                 if "openai.com" in base or "insufficient_quota" in low or "credit_balance" in low:
                     hint = (
-                        " Conta OpenAI sem crédito na API. "
-                        "ChatGPT Plus NÃO inclui crédito de API. "
-                        "Adicione crédito em platform.openai.com/settings/organization/billing "
-                        "e teste de novo."
+                        " Sem crédito na API OpenAI. "
+                        "platform.openai.com → Billing → Buy credits. "
+                        "ChatGPT Plus NÃO conta."
                     )
                 else:
                     hint = (
-                        " Processo grande demais para o Groq gratuito (limite ~8 mil tokens). "
-                        "Abra Ajustes → escolha «OpenAI GPT-4.1 mini» (com crédito na API) "
-                        "para enviar o processo grande, OU «Groq — rápido (20B)» e tente de novo. "
-                        "O Testar IA pode dar OK e o Resumo falhar — o teste é mensagem curta."
+                        " Processo grande demais para o Groq 120B (limite 8 mil tokens). "
+                        "FAÇA AGORA: Ajustes → plano «Groq — gratuito 20B» → Salvar → "
+                        "feche a janela preta → abra Iniciar.bat de novo → Resumo. "
+                        "O Testar IA pode dar OK e o Resumo falhar (teste é mensagem curta)."
                     )
+                    # auto-troca para 20B na próxima
+                    try:
+                        if "120b" in model.lower():
+                            save_config(
+                                {
+                                    "model": "openai/gpt-oss-20b",
+                                    "provider": "groq",
+                                    "provider_label": "Groq — gratuito 20B",
+                                    "base_url": "https://api.groq.com/openai/v1",
+                                }
+                            )
+                            hint += " Já deixei 20B salvo — reinicie o Iniciar.bat e tente de novo."
+                    except Exception:
+                        pass
             raise LlmError(f"A API devolveu erro {r.status_code}: {body}{hint}")
         data = r.json()
     try:
         content = data["choices"][0]["message"]["content"]
         if content is None:
-            # alguns modelos reasoning devolvem em outro campo
             content = data["choices"][0]["message"].get("reasoning") or ""
         return (content or "").strip()
     except Exception as exc:
@@ -144,7 +182,6 @@ def complete(system: str, user: str, *, temperature: float = 0.2) -> str:
 
 
 def ping() -> dict:
-    """Testa chave + modelo com prompt mínimo (para Ajustes)."""
     cfg = _cfg()
     if not cfg["api_key"]:
         raise LlmError("Sem chave configurada.")
