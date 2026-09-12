@@ -20,7 +20,7 @@ import prompts
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 CACHE_NAME = "extrato.json"
-EXTRACT_VERSION = 3
+EXTRACT_VERSION = 4
 
 app = FastAPI(title="Assistente Jurídico")
 app.mount("/ui", StaticFiles(directory=STATIC), name="static")
@@ -237,11 +237,12 @@ def acao(
             "Depois clique de novo na peça.",
         )
 
-    data = _load_or_extract(case, refresh=True)
+    # Cache do extrato: não relê o PDF inteiro a cada clique.
+    data = _load_or_extract(case, refresh=False)
     meta = data.get("meta") or {}
-    texto = data.get("texto") or ""
+    texto_full = data.get("texto") or ""
     # PDF só imagem / sem texto legível
-    texto_util = re.sub(r"\s+", "", texto)
+    texto_util = re.sub(r"\s+", "", texto_full)
     if len(texto_util) < 400:
         raise HTTPException(
             400,
@@ -249,6 +250,8 @@ def acao(
             "(provavelmente escaneado/imagem). Exporte o processo com texto "
             "selecionável no PJe (não só imagem) e importe de novo.",
         )
+    # Não manda o processo inteiro: só o trecho útil para esta peça.
+    texto = extractor.slice_for_action(texto_full, tipo)
     titulo, _, base_name = ACTION_MAP[tipo]
     # Se já salvou no aprendizado, combined_instructions já inclui o extra.
     user_prompt = _build_user_prompt(case, tipo, meta, texto, "" if learn else extra)
@@ -332,7 +335,7 @@ def refinar(
 
     data = _load_or_extract(case, refresh=False)
     meta = data.get("meta") or {}
-    texto_autos = data.get("texto") or ""
+    texto_autos = extractor.slice_for_action(data.get("texto") or "", tipo)
     learned = memory.combined_instructions(case, tipo, "")
 
     refine_prompt = f"""Reescreva a peça abaixo aplicando o feedback do advogado.
@@ -348,8 +351,8 @@ APRENDIZADOS JÁ SALVOS PARA ESTE TIPO/PROCESSO:
 PEÇA ATUAL:
 {ultima["texto"]}
 
-TRECHOS DOS AUTOS (para conferência):
-{texto_autos[:180000]}
+TRECHOS DOS AUTOS (para conferência — extrato parcial, não o PDF inteiro):
+{texto_autos}
 
 Capa/meta: {meta}
 """

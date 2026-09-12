@@ -50,10 +50,20 @@ def complete(system: str, user: str, *, temperature: float = 0.2) -> str:
         )
     model = cfg["model"]
     base = cfg["base_url"]
-    # Groq: contexto menor — corta entrada muito grande para não estourar
-    max_chars = 100_000 if "groq.com" in base else 450_000
+    # Groq free: TPM baixo (~8k no 120B). 1 token ≈ 3–4 chars em PT-BR.
+    # Manter pedido bem abaixo de 8k tokens (sistema + usuário + folga).
+    if "groq.com" in base:
+        max_chars = 14_000 if "120b" in model.lower() else 22_000
+        max_out = 4096 if "120b" in model.lower() else 6144
+    else:
+        max_chars = 450_000
+        max_out = 8192
     if len(user) > max_chars:
-        user = user[:max_chars] + "\n\n[…texto cortado por limite do modelo…]"
+        user = (
+            user[:max_chars]
+            + "\n\n[…texto cortado pelo limite gratuito da IA — "
+            "priorizados sentença e comprovantes no início do extrato…]"
+        )
     payload = {
         "model": model,
         "temperature": temperature,
@@ -62,9 +72,8 @@ def complete(system: str, user: str, *, temperature: float = 0.2) -> str:
             {"role": "user", "content": user},
         ],
     }
-    # gpt-oss e similares: limite de saída explícito
     if "groq.com" in base:
-        payload["max_tokens"] = 8192
+        payload["max_tokens"] = max_out
 
     with httpx.Client(timeout=300.0) as client:
         r = client.post(
@@ -74,15 +83,15 @@ def complete(system: str, user: str, *, temperature: float = 0.2) -> str:
         )
         if r.status_code >= 400:
             body = (r.text or "")[:500]
+            low = body.lower()
             hint = ""
             if r.status_code in (401, 403):
                 hint = " Verifique a chave (Groq: console.groq.com/keys)."
-            elif r.status_code == 404 or "does not exist" in body.lower() or "model_not_found" in body.lower():
+            elif r.status_code == 404 or "does not exist" in low or "model_not_found" in low:
                 hint = (
                     f" Modelo '{model}' indisponível. Abra Ajustes e escolha "
                     "Groq — gratuito (openai/gpt-oss-120b) ou Groq — rápido (20B)."
                 )
-                # tenta auto-corrigir se for legado
                 if model in LEGACY_MODELS or "llama" in model.lower() or "mixtral" in model.lower():
                     novo = LEGACY_MODELS.get(model, DEFAULT_CONFIG["model"])
                     try:
@@ -90,8 +99,19 @@ def complete(system: str, user: str, *, temperature: float = 0.2) -> str:
                     except Exception:
                         pass
                     hint += f" Já atualizei a config para '{novo}' — clique de novo na peça."
-            elif r.status_code == 429:
-                hint = " Limite gratuito esgotado — espere um pouco ou use outro plano."
+            elif (
+                r.status_code in (413, 429)
+                or "rate_limit" in low
+                or "request too large" in low
+                or "tokens per minute" in low
+            ):
+                hint = (
+                    " Processo grande demais para o limite gratuito deste modelo. "
+                    "Espere 1 minuto e tente de novo, ou em Ajustes escolha "
+                    "«Groq — rápido (20B)» (aceita pedido maior). "
+                    "O programa já envia só trechos (não o PDF inteiro); "
+                    "se ainda falhar, use o modelo 20B."
+                )
             raise LlmError(f"A API devolveu erro {r.status_code}: {body}{hint}")
         data = r.json()
     try:
