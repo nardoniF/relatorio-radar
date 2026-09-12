@@ -50,12 +50,12 @@ def complete(system: str, user: str, *, temperature: float = 0.2) -> str:
         )
     model = cfg["model"]
     base = cfg["base_url"]
-    # Groq free: TPM baixo. OpenAI/GPT: contexto grande — enviar tudo.
+    # Groq free: TPM ~8k no 120B — cortar forte.
+    # OpenAI/GPT: contexto grande — enviar o extrato quase inteiro.
     if "groq.com" in base:
-        max_chars = 14_000 if "120b" in model.lower() else 22_000
-        max_out = 4096 if "120b" in model.lower() else 6144
+        max_chars = 10_000 if "120b" in model.lower() else 18_000
+        max_out = 3072 if "120b" in model.lower() else 4096
     elif "openai.com" in base:
-        # GPT pago: manda o extrato quase inteiro
         max_chars = 900_000
         max_out = 16384
     else:
@@ -64,7 +64,8 @@ def complete(system: str, user: str, *, temperature: float = 0.2) -> str:
     if len(user) > max_chars:
         user = (
             user[:max_chars]
-            + "\n\n[…texto cortado só por limite técnico do provedor…]"
+            + "\n\n[…texto cortado pelo limite do provedor atual "
+            f"({ 'Groq gratuito' if 'groq.com' in base else 'API' })…]"
         )
     payload = {
         "model": model,
@@ -113,17 +114,22 @@ def complete(system: str, user: str, *, temperature: float = 0.2) -> str:
                 or "rate_limit" in low
                 or "request too large" in low
                 or "tokens per minute" in low
+                or "insufficient_quota" in low
+                or "credit_balance" in low
             ):
-                if "openai.com" in base:
+                if "openai.com" in base or "insufficient_quota" in low or "credit_balance" in low:
                     hint = (
-                        " Limite/cota da OpenAI. Confira crédito em "
-                        "platform.openai.com (Billing) ou espere e tente de novo."
+                        " Conta OpenAI sem crédito na API. "
+                        "ChatGPT Plus NÃO inclui crédito de API. "
+                        "Adicione crédito em platform.openai.com/settings/organization/billing "
+                        "e teste de novo."
                     )
                 else:
                     hint = (
-                        " Processo grande demais para o Groq gratuito. "
-                        "Em Ajustes escolha «OpenAI GPT-4.1 mini» (pago, envia tudo) "
-                        "ou «Groq — rápido (20B)» e espere 1 minuto."
+                        " Processo grande demais para o Groq gratuito (limite ~8 mil tokens). "
+                        "Abra Ajustes → escolha «OpenAI GPT-4.1 mini» (com crédito na API) "
+                        "para enviar o processo grande, OU «Groq — rápido (20B)» e tente de novo. "
+                        "O Testar IA pode dar OK e o Resumo falhar — o teste é mensagem curta."
                     )
             raise LlmError(f"A API devolveu erro {r.status_code}: {body}{hint}")
         data = r.json()

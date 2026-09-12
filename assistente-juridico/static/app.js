@@ -190,7 +190,7 @@ async function importar() {
     );
     if (!config?.has_key) {
       setBanner(
-        "Pasta criada, mas análise bloqueada: abra Ajustes e cole a chave Groq (console.groq.com/keys).",
+        "Pasta criada, mas análise bloqueada: abra Ajustes e cole a chave (OpenAI sk-... ou Groq gsk_...).",
         "err",
       );
     }

@@ -250,8 +250,15 @@ def acao(
             "(provavelmente escaneado/imagem). Exporte o processo com texto "
             "selecionável no PJe (não só imagem) e importe de novo.",
         )
-    # Não manda o processo inteiro: só o trecho útil para esta peça.
-    texto = extractor.slice_for_action(texto_full, tipo)
+    # OpenAI: extrato completo. Groq: corta (TPM ~8k).
+    cfg = organizer.load_config()
+    base = (cfg.get("base_url") or "").lower()
+    if "groq.com" in base:
+        model = (cfg.get("model") or "").lower()
+        budget = 10_000 if "120b" in model else 18_000
+        texto = extractor.slice_for_action(texto_full, tipo, max_chars=budget)
+    else:
+        texto = extractor.slice_for_action(texto_full, tipo)  # None = tudo
     titulo, _, base_name = ACTION_MAP[tipo]
     # Se já salvou no aprendizado, combined_instructions já inclui o extra.
     user_prompt = _build_user_prompt(case, tipo, meta, texto, "" if learn else extra)
