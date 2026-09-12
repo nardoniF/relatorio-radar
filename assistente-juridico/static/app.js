@@ -292,11 +292,20 @@ function applyPreset() {
 }
 
 async function salvarAjustes() {
+  // Não manda preset sozinho sobrescrevendo o modelo digitado:
+  // o backend aplica preset e depois o model do formulário.
   const payload = {
     preset: $("preset").value,
     model: $("model").value.trim(),
     base_url: $("base_url").value.trim(),
   };
+  // Se o usuário digitou 20b manualmente, garante no payload
+  if (!payload.model) payload.model = "openai/gpt-oss-20b";
+  // Bloqueia 120b no free (volta sozinho no Salvar antigo)
+  if (payload.model.includes("120b")) {
+    payload.model = "openai/gpt-oss-20b";
+    $("model").value = payload.model;
+  }
   const key = $("api_key").value.trim();
   if (key) payload.api_key = key;
   $("ajuste-msg").textContent = "Salvando…";
@@ -308,7 +317,7 @@ async function salvarAjustes() {
     });
     await loadConfig();
     $("ajuste-msg").textContent = config.has_key
-      ? "Salvo. Use “Testar IA” e depois gere a peça."
+      ? `Salvo · modelo ${config.model}. Use “Testar IA” e depois gere a peça.`
       : "Salvo, mas ainda sem chave — análises continuam bloqueadas.";
     $("ajuste-msg").className = "status " + (config.has_key ? "ok" : "err");
   } catch (e) {

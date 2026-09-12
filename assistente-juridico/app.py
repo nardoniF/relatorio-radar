@@ -98,24 +98,39 @@ def set_config(payload: dict):
         allowed["api_key"] = (payload.get("api_key") or "").strip()
     elif "openai_api_key" in payload:
         allowed["api_key"] = (payload.get("openai_api_key") or "").strip()
-    if "model" in payload:
-        allowed["model"] = payload.get("model") or DEFAULT_CONFIG["model"]
-    if "provider" in payload:
-        allowed["provider"] = payload.get("provider")
-    if "provider_label" in payload:
-        allowed["provider_label"] = payload.get("provider_label")
-    if "base_url" in payload:
-        allowed["base_url"] = (payload.get("base_url") or DEFAULT_CONFIG["base_url"]).rstrip("/")
+
+    # 1) Aplica preset
+    # 2) Depois o modelo/URL digitados ganham (evita voltar para 120b ao Salvar)
     if "preset" in payload and payload["preset"] in PRESETS:
         p = PRESETS[payload["preset"]]
         allowed.update(
             {
                 "provider": p["provider"],
-                "provider_label": p["provider_label"],
+                "provider_label": p.get("provider_label") or p.get("provider_label", ""),
                 "model": p["model"],
                 "base_url": p["base_url"],
             }
         )
+
+    if payload.get("provider"):
+        allowed["provider"] = payload["provider"]
+    label = payload.get("provider_label") or payload.get("provider_label")
+    if label:
+        allowed["provider_label"] = label
+
+    if (payload.get("model") or "").strip():
+        allowed["model"] = payload["model"].strip()
+    if (payload.get("base_url") or "").strip():
+        allowed["base_url"] = payload["base_url"].strip().rstrip("/")
+
+    # Trava de segurança: Groq + 120B free → 20B
+    model = (allowed.get("model") or "").lower()
+    base = (allowed.get("base_url") or "").lower()
+    prov = (allowed.get("provider") or "").lower()
+    if ("groq.com" in base or prov == "groq") and "120b" in model:
+        allowed["model"] = "openai/gpt-oss-20b"
+        allowed["provider_label"] = "Groq — gratuito 20B"
+
     organizer.save_config(allowed)
     return get_config()
 
