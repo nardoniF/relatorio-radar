@@ -358,6 +358,29 @@ body {
   accent-color: var(--accent);
 }
 
+.settings-panel .email-label em {
+  font-style: normal;
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.85em;
+}
+
+.settings-panel .route-summary {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--accent);
+  line-height: 1.35;
+}
+
+.settings-panel .dest-actions {
+  margin: 0;
+}
+
+.settings-panel .dest-actions .btn-secondary {
+  font-size: 0.8rem;
+  padding: 8px 10px;
+}
+
 .alert-banner {
   min-height: 64px;
   display: flex;

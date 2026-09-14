@@ -106,3 +106,70 @@ export function formatClock(ts: number): string {
     second: '2-digit',
   })
 }
+
+/** Distância mínima de um ponto a um segmento em metros (aproximação plana local). */
+export function distancePointToSegmentM(
+  p: LatLng,
+  a: LatLng,
+  b: LatLng,
+): number {
+  const ax = a.lng
+  const ay = a.lat
+  const bx = b.lng
+  const by = b.lat
+  const px = p.lng
+  const py = p.lat
+  const dx = bx - ax
+  const dy = by - ay
+  const len2 = dx * dx + dy * dy
+  let t = len2 === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / len2
+  t = Math.max(0, Math.min(1, t))
+  const proj = { lat: ay + t * dy, lng: ax + t * dx }
+  return haversineM(p, proj)
+}
+
+export function distanceToPathM(point: LatLng, path: LatLng[]): number {
+  if (path.length === 0) return Infinity
+  if (path.length === 1) return haversineM(point, path[0])
+  let best = Infinity
+  for (let i = 0; i < path.length - 1; i++) {
+    const d = distancePointToSegmentM(point, path[i], path[i + 1])
+    if (d < best) best = d
+  }
+  return best
+}
+
+/** Distância ao longo do path até o ponto mais próximo do radar. */
+export function distanceAlongPathToPointM(
+  path: LatLng[],
+  point: LatLng,
+): number {
+  if (path.length < 2) return 0
+  let bestDist = Infinity
+  let bestAlong = 0
+  let along = 0
+  for (let i = 0; i < path.length - 1; i++) {
+    const a = path[i]
+    const b = path[i + 1]
+    const segLen = haversineM(a, b)
+    const ax = a.lng
+    const ay = a.lat
+    const bx = b.lng
+    const by = b.lat
+    const px = point.lng
+    const py = point.lat
+    const dx = bx - ax
+    const dy = by - ay
+    const len2 = dx * dx + dy * dy
+    let t = len2 === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / len2
+    t = Math.max(0, Math.min(1, t))
+    const proj = { lat: ay + t * dy, lng: ax + t * dx }
+    const d = haversineM(point, proj)
+    if (d < bestDist) {
+      bestDist = d
+      bestAlong = along + segLen * t
+    }
+    along += segLen
+  }
+  return bestAlong
+}

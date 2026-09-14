@@ -27,6 +27,15 @@ import {
 } from './radarPack'
 import { RadarTracker } from './radarTracker'
 import { buildReport, reportToText } from './report'
+import {
+  formatRouteSummary,
+  getSavedDestinationText,
+  openWazeTo,
+  planRouteToDestination,
+  saveDestinationText,
+  upcomingOnRoute,
+  type RoutePlan,
+} from './route'
 import { SimEngine } from './sim'
 import type {
   PositionSample,
@@ -56,6 +65,10 @@ type UiState = {
   packCount: number
   autoStart: boolean
   watchingAuto: boolean
+  destinationText: string
+  routePlan: RoutePlan | null
+  routeSummary: string
+  planningRoute: boolean
 }
 
 const state: UiState = {
@@ -72,6 +85,10 @@ const state: UiState = {
   packCount: 0,
   autoStart: localStorage.getItem(AUTO_KEY) === '1',
   watchingAuto: false,
+  destinationText: getSavedDestinationText(),
+  routePlan: null,
+  routeSummary: '',
+  planningRoute: false,
 }
 
 const tracker = new RadarTracker(RADARS)
@@ -100,7 +117,9 @@ function render(): void {
     state.alert != null && state.alert.distanceM <= state.alertDistanceM
   const upcoming =
     state.lastSample != null
-      ? tracker.upcoming(state.lastSample, 3)
+      ? state.routePlan
+        ? upcomingOnRoute(state.routePlan, state.lastSample, 3)
+        : tracker.upcoming(state.lastSample, 3)
       : tracker.getRadars().slice(0, 3).map((radar) => ({ radar, distanceM: NaN }))
 
   app.innerHTML = `
@@ -165,6 +184,31 @@ function render(): void {
         </div>
 
         <div class="settings-panel open">
+          <label class="email-label" for="destination-input">
+            Destino <em>(opcional)</em>
+          </label>
+          <input
+            type="text"
+            id="destination-input"
+            class="email-input"
+            placeholder="Ex.: Av. Paulista, SP — ou deixe vazio"
+            value="${escapeAttr(state.destinationText)}"
+            autocomplete="street-address"
+          />
+          <div class="btn-row dest-actions">
+            <button type="button" class="btn-secondary" id="btn-plan" ${running || state.planningRoute ? 'disabled' : ''}>
+              ${state.planningRoute ? 'Planejando…' : 'Planejar radares'}
+            </button>
+            <button type="button" class="btn-secondary" id="btn-clear-dest" ${running ? 'disabled' : ''}>Limpar</button>
+            <button type="button" class="btn-secondary" id="btn-waze" ${state.routePlan ? '' : 'disabled'}>Abrir no Waze</button>
+          </div>
+          <p class="route-summary" id="route-summary">
+            ${
+              state.routeSummary
+                ? escapeAttr(state.routeSummary)
+                : 'Sem destino = alerta só perto de você (como hoje). Com destino = prevê os da rota.'
+            }
+          </p>
           <label>
             Sirene/voz a partir de
             <strong id="alert-dist-label">${state.alertDistanceM} m</strong>
@@ -187,8 +231,7 @@ function render(): void {
             Iniciar sozinho acima de ${AUTO_SPEED_KMH} km/h
           </label>
           <p class="hint">
-            GPS real = radares OSM de SP. Sofá = demo. Auto-início só com o app aberto
-            (segundo plano de verdade exige o app nativo no Xcode).
+            Destino é opcional. GPS real = OSM SP. Sofá = demo.
           </p>
         </div>
 
@@ -312,6 +355,25 @@ function bindEvents(): void {
   document.getElementById('btn-test-sound')?.addEventListener('click', () => {
     void testAlertNow(60).then(() => showToast('Falou: Baixa a velocidade para 60'))
   })
+  document.getElementById('btn-plan')?.addEventListener('click', () => {
+    void planDestinationFromUi()
+  })
+  document.getElementById('btn-clear-dest')?.addEventListener('click', clearDestination)
+  document.getElementById('btn-waze')?.addEventListener('click', () => {
+    if (state.routePlan) openWazeTo(state.routePlan.destination)
+  })
+
+  const destInput = document.getElementById('destination-input') as HTMLInputElement | null
+  destInput?.addEventListener('input', () => {
+    state.destinationText = destInput.value
+    saveDestinationText(destInput.value)
+  })
+  destInput?.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault()
+      void planDestinationFromUi()
+    }
+  })
 
   const auto = document.getElementById('auto-start') as HTMLInputElement | null
   auto?.addEventListener('change', () => {
@@ -394,13 +456,17 @@ function onSample(sample: PositionSample): void {
   state.samples.push(sample)
   if (state.samples.length > 5000) state.samples.shift()
 
-  // GPS real: janela de radares OSM ao redor (não usa a demo da Pacaembu)
+  // GPS real: com rota usa radares da rota; sem destino = janela perto (como hoje)
   if (state.mode === 'gps' && packReady) {
-    const keep = [
-      ...tracker.getPassages().map((p) => p.radar.id),
-      ...(state.alert ? [state.alert.radar.id] : []),
-    ]
-    tracker.setRadars(activeRadarWindow(sample, GPS_RADAR_RADIUS_M, keep))
+    if (state.routePlan) {
+      tracker.setRadars(state.routePlan.radars)
+    } else {
+      const keep = [
+        ...tracker.getPassages().map((p) => p.radar.id),
+        ...(state.alert ? [state.alert.radar.id] : []),
+      ]
+      tracker.setRadars(activeRadarWindow(sample, GPS_RADAR_RADIUS_M, keep))
+    }
   }
 
   const { alert, newPassage } = tracker.update(sample)
@@ -469,7 +535,9 @@ function updateHud(sample: PositionSample, alert: RadarAlert | null): void {
 
   const list = document.getElementById('upcoming-list')
   if (list) {
-    const upcoming = tracker.upcoming(sample, 3)
+    const upcoming = state.routePlan
+      ? upcomingOnRoute(state.routePlan, sample, 3)
+      : tracker.upcoming(sample, 3)
     list.innerHTML = `<div class="upcoming-title">Próximos</div>${renderUpcoming(upcoming)}`
   }
 }
@@ -479,8 +547,88 @@ function persistEmailFromDom(): void {
   if (emailInput) setReportEmail(emailInput.value)
 }
 
+function persistDestinationFromDom(): void {
+  const dest = document.getElementById('destination-input') as HTMLInputElement | null
+  if (dest) {
+    state.destinationText = dest.value
+    saveDestinationText(dest.value)
+  }
+}
+
+function clearDestination(): void {
+  state.destinationText = ''
+  state.routePlan = null
+  state.routeSummary = ''
+  saveDestinationText('')
+  showToast('Destino limpo — modo perto de você')
+  render()
+}
+
+function getOriginForPlan(): Promise<{ lat: number; lng: number }> {
+  return new Promise((resolve, reject) => {
+    if (state.lastSample) {
+      resolve({ lat: state.lastSample.lat, lng: state.lastSample.lng })
+      return
+    }
+    if (!('geolocation' in navigator)) {
+      reject(new Error('Sem GPS para origem da rota'))
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) =>
+        resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => reject(new Error('Permita a localização para planejar a rota')),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 5000 },
+    )
+  })
+}
+
+async function planDestinationFromUi(): Promise<void> {
+  persistDestinationFromDom()
+  const q = state.destinationText.trim()
+  if (!q) {
+    showToast('Destino vazio — o app segue só com radares perto de você')
+    return
+  }
+  if (!packReady) {
+    try {
+      await loadSaoPauloRadarPack()
+      state.packCount = getPackMeta().count
+      packReady = true
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Falha ao carregar radares', true)
+      return
+    }
+  }
+
+  state.planningRoute = true
+  render()
+  try {
+    const from = await getOriginForPlan()
+    const plan = await planRouteToDestination({
+      from,
+      destinationQuery: q,
+    })
+    state.routePlan = plan
+    state.routeSummary = formatRouteSummary(plan)
+    state.status = state.routeSummary
+    showToast(state.routeSummary)
+    void speakDynamic(
+      `Rota com ${plan.radars.length} radares. Destino ${plan.destinationLabel.split(',')[0]}.`,
+    )
+  } catch (e) {
+    state.routePlan = null
+    state.routeSummary = ''
+    showToast(e instanceof Error ? e.message : 'Falha ao planejar', true)
+  } finally {
+    state.planningRoute = false
+    render()
+  }
+}
+
 async function startGps(): Promise<void> {
   persistEmailFromDom()
+  persistDestinationFromDom()
   stopAutoWatch()
   resetAlertAudio()
   await armVoiceOnUserGesture()
@@ -497,14 +645,50 @@ async function startGps(): Promise<void> {
     }
   }
 
+  // Destino opcional: se tiver texto e ainda não planejou, tenta planejar;
+  // se falhar ou estiver vazio, segue no modo “perto de você”.
+  const destQ = state.destinationText.trim()
+  if (destQ && !state.routePlan) {
+    state.planningRoute = true
+    state.status = 'Planejando rota (opcional)…'
+    render()
+    try {
+      const from = await getOriginForPlan()
+      const plan = await planRouteToDestination({
+        from,
+        destinationQuery: destQ,
+      })
+      state.routePlan = plan
+      state.routeSummary = formatRouteSummary(plan)
+    } catch (e) {
+      showToast(
+        (e instanceof Error ? e.message : 'Rota falhou') +
+          ' — seguindo sem destino',
+        true,
+      )
+      state.routePlan = null
+      state.routeSummary = ''
+    } finally {
+      state.planningRoute = false
+    }
+  }
+
   beginTrip('gps')
-  tracker.setRadars([])
-  const near = state.packCount
-  state.status = `Navegação iniciada · ${near} radares OSM em SP`
-  void speakDynamic(
-    `Navegação iniciada. Mapeados ${near} radares na região de São Paulo.`,
-  )
-  showToast(`Navegação · ${near} radares OSM`)
+  if (state.routePlan) {
+    tracker.setRadars(state.routePlan.radars)
+    state.status = `Navegação · ${formatRouteSummary(state.routePlan)}`
+    void speakDynamic(
+      `Navegação iniciada. ${state.routePlan.radars.length} radares na rota.`,
+    )
+    showToast(state.status)
+  } else {
+    tracker.setRadars([])
+    state.status = `Navegação · radares perto de você · pack ${state.packCount}`
+    void speakDynamic(
+      `Navegação iniciada. Monitorando radares próximos.`,
+    )
+    showToast(state.status)
+  }
 
   gps = new GpsEngine({
     onSample,
@@ -518,7 +702,10 @@ async function startGps(): Promise<void> {
       }
     },
     onStatus: (message) => {
-      state.status = `${message} · ${state.packCount} radares OSM`
+      const extra = state.routePlan
+        ? formatRouteSummary(state.routePlan)
+        : `${state.packCount} radares OSM`
+      state.status = `${message} · ${extra}`
       state.error = null
       const el = document.querySelector('.status-line')
       if (el) {
