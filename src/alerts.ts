@@ -284,6 +284,25 @@ export async function speakFined(force = false): Promise<void> {
   await playLocalClip('multado.mp3')
 }
 
+/**
+ * Frase dinâmica (ex.: quantos radares). No Mac funciona bem via speechSynthesis;
+ * no iPhone pode falhar fora do gesto — por isso o start já toca MP3 local.
+ */
+export async function speakDynamic(text: string, force = false): Promise<void> {
+  if (!voiceArmed && !force) return
+  if (!('speechSynthesis' in window)) return
+  try {
+    window.speechSynthesis.cancel()
+    const u = new SpeechSynthesisUtterance(text)
+    u.lang = 'pt-BR'
+    u.rate = 0.95
+    u.volume = 1
+    window.speechSynthesis.speak(u)
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function testAlertNow(limitKmh = 60): Promise<void> {
   await armVoiceOnUserGesture()
   playSiren(1.6, true)

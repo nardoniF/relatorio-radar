@@ -342,6 +342,22 @@ body {
   outline-offset: 1px;
 }
 
+.settings-panel .auto-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-start;
+  margin-top: 4px;
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.settings-panel .auto-label input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
 .alert-banner {
   min-height: 64px;
   display: flex;

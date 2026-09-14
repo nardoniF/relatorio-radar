@@ -16,6 +16,14 @@ export class RadarTracker {
 
   constructor(private radars: Radar[]) {}
 
+  setRadars(radars: Radar[]): void {
+    this.radars = radars
+  }
+
+  getRadars(): Radar[] {
+    return this.radars
+  }
+
   reset(): void {
     this.approaches.clear()
     this.passages = []

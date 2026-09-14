@@ -5,6 +5,7 @@ import {
   handleRadarAlertAudio,
   resetAlertAudio,
   setAlertDistanceM,
+  speakDynamic,
   speakFined,
   stopVoiceKeepAlive,
   testAlertNow,
@@ -19,6 +20,11 @@ import {
 } from './email'
 import { formatClock, formatDuration, formatKmh } from './geo'
 import { GpsEngine } from './gps'
+import {
+  activeRadarWindow,
+  getPackMeta,
+  loadSaoPauloRadarPack,
+} from './radarPack'
 import { RadarTracker } from './radarTracker'
 import { buildReport, reportToText } from './report'
 import { SimEngine } from './sim'
@@ -26,10 +32,13 @@ import type {
   PositionSample,
   Radar,
   RadarAlert,
-  RadarPassage,
   TripMode,
   TripReport,
 } from './types'
+
+const AUTO_SPEED_KMH = 30
+const GPS_RADAR_RADIUS_M = 2500
+const AUTO_KEY = 'radar_auto_start'
 
 const app = document.querySelector<HTMLDivElement>('#app')!
 
@@ -37,13 +46,16 @@ type UiState = {
   mode: TripMode
   startedAt: number | null
   samples: PositionSample[]
-  passages: RadarPassage[]
+  passages: import('./types').RadarPassage[]
   lastSample: PositionSample | null
   alert: RadarAlert | null
   report: TripReport | null
   status: string
   error: string | null
   alertDistanceM: number
+  packCount: number
+  autoStart: boolean
+  watchingAuto: boolean
 }
 
 const state: UiState = {
@@ -54,14 +66,20 @@ const state: UiState = {
   lastSample: null,
   alert: null,
   report: null,
-  status: 'Escolha GPS real ou Simular no sofá.',
+  status: 'Carregando radares reais de SP…',
   error: null,
   alertDistanceM: getAlertDistanceM(),
+  packCount: 0,
+  autoStart: localStorage.getItem(AUTO_KEY) === '1',
+  watchingAuto: false,
 }
 
 const tracker = new RadarTracker(RADARS)
 let gps: GpsEngine | null = null
 let sim: SimEngine | null = null
+let autoWatcher: GpsEngine | null = null
+let autoAboveSince: number | null = null
+let packReady = false
 
 function ringState(
   speed: number,
@@ -83,13 +101,16 @@ function render(): void {
   const upcoming =
     state.lastSample != null
       ? tracker.upcoming(state.lastSample, 3)
-      : RADARS.slice(0, 3).map((radar) => ({ radar, distanceM: NaN }))
+      : tracker.getRadars().slice(0, 3).map((radar) => ({ radar, distanceM: NaN }))
 
   app.innerHTML = `
     <div class="shell ${showReport ? 'report-open' : ''}">
       <header class="brand live-only">
         <h1>Relatório <span>Radar</span></h1>
-        <p>Círculo = limite. Em cima = sua velocidade. Ao lado = próximos 3 radares.</p>
+        <p>
+          GPS real usa <strong>${state.packCount || '…'} radares OSM</strong> de SP
+          (não é o trecho fictício do sofá).
+        </p>
       </header>
 
       <section class="speed-stage live-only" aria-live="polite">
@@ -161,7 +182,14 @@ function render(): void {
             autocomplete="email"
             inputmode="email"
           />
-          <p class="hint">Ao tocar Simular/GPS deve falar “Monitoramento iniciado”. Perto do radar, manda baixar sozinho (áudio local, sem internet).</p>
+          <label class="auto-label">
+            <input type="checkbox" id="auto-start" ${state.autoStart ? 'checked' : ''} />
+            Iniciar sozinho acima de ${AUTO_SPEED_KMH} km/h
+          </label>
+          <p class="hint">
+            GPS real = radares OSM de SP. Sofá = demo. Auto-início só com o app aberto
+            (segundo plano de verdade exige o app nativo no Xcode).
+          </p>
         </div>
 
         <div class="btn-row">
@@ -285,6 +313,14 @@ function bindEvents(): void {
     void testAlertNow(60).then(() => showToast('Falou: Baixa a velocidade para 60'))
   })
 
+  const auto = document.getElementById('auto-start') as HTMLInputElement | null
+  auto?.addEventListener('change', () => {
+    state.autoStart = Boolean(auto.checked)
+    localStorage.setItem(AUTO_KEY, state.autoStart ? '1' : '0')
+    if (state.autoStart) void enableAutoWatch()
+    else stopAutoWatch()
+  })
+
   const emailInput = document.getElementById('report-email') as HTMLInputElement | null
   emailInput?.addEventListener('input', () => {
     setReportEmail(emailInput.value)
@@ -357,6 +393,15 @@ function onSample(sample: PositionSample): void {
   state.lastSample = sample
   state.samples.push(sample)
   if (state.samples.length > 5000) state.samples.shift()
+
+  // GPS real: janela de radares OSM ao redor (não usa a demo da Pacaembu)
+  if (state.mode === 'gps' && packReady) {
+    const keep = [
+      ...tracker.getPassages().map((p) => p.radar.id),
+      ...(state.alert ? [state.alert.radar.id] : []),
+    ]
+    tracker.setRadars(activeRadarWindow(sample, GPS_RADAR_RADIUS_M, keep))
+  }
 
   const { alert, newPassage } = tracker.update(sample)
   state.alert = alert
@@ -436,11 +481,31 @@ function persistEmailFromDom(): void {
 
 async function startGps(): Promise<void> {
   persistEmailFromDom()
-  // Reset ANTES do unlock — nunca pausar o TTS depois do gesto
+  stopAutoWatch()
   resetAlertAudio()
-  // Mesmo gesto do toque — libera voz espontânea no iPhone
   await armVoiceOnUserGesture()
+
+  if (!packReady) {
+    try {
+      await loadSaoPauloRadarPack()
+      state.packCount = getPackMeta().count
+      packReady = true
+    } catch (e) {
+      state.error = e instanceof Error ? e.message : 'Falha ao carregar radares'
+      render()
+      return
+    }
+  }
+
   beginTrip('gps')
+  tracker.setRadars([])
+  const near = state.packCount
+  state.status = `Navegação iniciada · ${near} radares OSM em SP`
+  void speakDynamic(
+    `Navegação iniciada. Mapeados ${near} radares na região de São Paulo.`,
+  )
+  showToast(`Navegação · ${near} radares OSM`)
+
   gps = new GpsEngine({
     onSample,
     onError: (message) => {
@@ -453,12 +518,12 @@ async function startGps(): Promise<void> {
       }
     },
     onStatus: (message) => {
-      state.status = message
+      state.status = `${message} · ${state.packCount} radares OSM`
       state.error = null
       const el = document.querySelector('.status-line')
       if (el) {
         el.classList.remove('error')
-        el.textContent = message
+        el.textContent = state.status
       }
     },
   })
@@ -467,10 +532,12 @@ async function startGps(): Promise<void> {
 
 async function startSim(): Promise<void> {
   persistEmailFromDom()
+  stopAutoWatch()
   resetAlertAudio()
   await armVoiceOnUserGesture()
   stopEngines()
   tracker.reset()
+  tracker.setRadars(RADARS)
   state.mode = 'sim'
   state.startedAt = Date.now()
   state.samples = []
@@ -479,7 +546,8 @@ async function startSim(): Promise<void> {
   state.alert = null
   state.report = null
   state.error = null
-  state.status = 'Simulação · voz liberada'
+  state.status = `Simulação (demo) · ${RADARS.length} radares fictícios`
+  void speakDynamic('Simulação no sofá. Radares de demonstração.')
   sim = new SimEngine({
     onSample,
     onStatus: (message) => {
@@ -497,6 +565,58 @@ async function startSim(): Promise<void> {
   sim.setTimeScale(4)
   render()
   sim.start()
+}
+
+function stopAutoWatch(): void {
+  autoWatcher?.stop()
+  autoWatcher = null
+  state.watchingAuto = false
+  autoAboveSince = null
+}
+
+async function enableAutoWatch(): Promise<void> {
+  if (state.mode !== 'idle' || state.report) return
+  if (autoWatcher) return
+  if (!packReady) {
+    try {
+      await loadSaoPauloRadarPack()
+      state.packCount = getPackMeta().count
+      packReady = true
+    } catch {
+      showToast('Não deu para carregar radares para o auto-início', true)
+      return
+    }
+  }
+  state.watchingAuto = true
+  state.status = `Auto: esperando >${AUTO_SPEED_KMH} km/h…`
+  render()
+  autoWatcher = new GpsEngine({
+    onSample: (sample) => {
+      state.lastSample = sample
+      const my = document.getElementById('my-speed-value')
+      if (my) my.textContent = formatKmh(sample.speedKmh)
+      if (sample.speedKmh >= AUTO_SPEED_KMH) {
+        if (autoAboveSince == null) autoAboveSince = Date.now()
+        // 3 s acima de 30 km/h → inicia (evita falso positivo parado)
+        if (Date.now() - autoAboveSince >= 3000 && state.mode === 'idle') {
+          stopAutoWatch()
+          void startGps()
+        }
+      } else {
+        autoAboveSince = null
+      }
+    },
+    onError: (message) => {
+      state.error = message
+      showToast(message, true)
+    },
+    onStatus: (message) => {
+      state.status = `Auto · ${message}`
+      const el = document.querySelector('.status-line')
+      if (el && !state.error) el.textContent = state.status
+    },
+  })
+  autoWatcher.start()
 }
 
 function finalizeTrip(): void {
@@ -600,4 +720,22 @@ function showToast(message: string, bad = false): void {
   window.setTimeout(() => toast.classList.remove('show'), 2600)
 }
 
-render()
+async function boot(): Promise<void> {
+  render()
+  try {
+    await loadSaoPauloRadarPack()
+    state.packCount = getPackMeta().count
+    packReady = true
+    state.status = `${state.packCount} radares OSM em SP · GPS real ou Simular`
+  } catch (e) {
+    state.error =
+      e instanceof Error
+        ? e.message
+        : 'Não carregou o pack de radares. Sofá ainda funciona.'
+    state.status = 'Pack OSM indisponível — use Simular no sofá'
+  }
+  render()
+  if (state.autoStart) void enableAutoWatch()
+}
+
+void boot()
