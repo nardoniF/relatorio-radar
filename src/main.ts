@@ -1,0 +1,928 @@
+import './style.css'
+import {
+  armVoiceOnUserGesture,
+  getAlertDistanceM,
+  handleRadarAlertAudio,
+  resetAlertAudio,
+  setAlertDistanceM,
+  speakDynamic,
+  speakFined,
+  stopVoiceKeepAlive,
+  testAlertNow,
+} from './alerts'
+import { RADARS } from './data/radars'
+import {
+  getReportEmail,
+  isValidEmail,
+  openReportEmail,
+  setReportEmail,
+  shareOrEmailReport,
+} from './email'
+import { formatClock, formatDuration, formatKmh } from './geo'
+import { GpsEngine } from './gps'
+import {
+  activeRadarWindow,
+  getPackMeta,
+  loadSaoPauloRadarPack,
+} from './radarPack'
+import { RadarTracker } from './radarTracker'
+import { buildReport, reportToText } from './report'
+import {
+  formatRouteSummary,
+  getSavedDestinationText,
+  openWazeTo,
+  planRouteToDestination,
+  saveDestinationText,
+  upcomingOnRoute,
+  type RoutePlan,
+} from './route'
+import { SimEngine } from './sim'
+import type {
+  PositionSample,
+  Radar,
+  RadarAlert,
+  TripMode,
+  TripReport,
+} from './types'
+
+const AUTO_SPEED_KMH = 30
+const GPS_RADAR_RADIUS_M = 2500
+const AUTO_KEY = 'radar_auto_start'
+
+const app = document.querySelector<HTMLDivElement>('#app')!
+
+type UiState = {
+  mode: TripMode
+  startedAt: number | null
+  samples: PositionSample[]
+  passages: import('./types').RadarPassage[]
+  lastSample: PositionSample | null
+  alert: RadarAlert | null
+  report: TripReport | null
+  status: string
+  error: string | null
+  alertDistanceM: number
+  packCount: number
+  autoStart: boolean
+  watchingAuto: boolean
+  destinationText: string
+  routePlan: RoutePlan | null
+  routeSummary: string
+  planningRoute: boolean
+}
+
+const state: UiState = {
+  mode: 'idle',
+  startedAt: null,
+  samples: [],
+  passages: [],
+  lastSample: null,
+  alert: null,
+  report: null,
+  status: 'Carregando radares reais de SP…',
+  error: null,
+  alertDistanceM: getAlertDistanceM(),
+  packCount: 0,
+  autoStart: localStorage.getItem(AUTO_KEY) === '1',
+  watchingAuto: false,
+  destinationText: getSavedDestinationText(),
+  routePlan: null,
+  routeSummary: '',
+  planningRoute: false,
+}
+
+const tracker = new RadarTracker(RADARS)
+let gps: GpsEngine | null = null
+let sim: SimEngine | null = null
+let autoWatcher: GpsEngine | null = null
+let autoAboveSince: number | null = null
+let packReady = false
+
+function ringState(
+  speed: number,
+  alert: RadarAlert | null,
+): 'idle' | 'over' | 'ok' {
+  if (!alert) return 'idle'
+  return speed > alert.radar.limitKmh + 0.5 ? 'over' : 'ok'
+}
+
+function render(): void {
+  const speed = state.lastSample?.speedKmh ?? 0
+  const limit = state.alert?.radar.limitKmh ?? null
+  const dist = state.alert ? Math.round(state.alert.distanceM) : null
+  const ring = ringState(speed, state.alert)
+  const running = state.mode !== 'idle' && !state.report
+  const showReport = Boolean(state.report)
+  const inAlertZone =
+    state.alert != null && state.alert.distanceM <= state.alertDistanceM
+  const upcoming =
+    state.lastSample != null
+      ? state.routePlan
+        ? upcomingOnRoute(state.routePlan, state.lastSample, 3)
+        : tracker.upcoming(state.lastSample, 3)
+      : tracker.getRadars().slice(0, 3).map((radar) => ({ radar, distanceM: NaN }))
+
+  app.innerHTML = `
+    <div class="shell ${showReport ? 'report-open' : ''}">
+      <header class="brand live-only">
+        <h1>Relatório <span>Radar</span></h1>
+        <p>
+          GPS real usa <strong>${state.packCount || '…'} radares OSM</strong> de SP
+          (não é o trecho fictício do sofá).
+        </p>
+      </header>
+
+      <section class="speed-stage live-only" aria-live="polite">
+        <div class="my-speed" id="my-speed">
+          <span class="my-speed-label">Sua velocidade</span>
+          <strong id="my-speed-value">${formatKmh(speed)}</strong>
+          <span class="my-speed-unit">km/h</span>
+        </div>
+
+        <div class="stage-row">
+          <div class="speed-ring ring-${ring}" id="speed-ring">
+            <div class="speed-inner">
+              <div class="limit-label">${limit != null ? 'Baixe para' : 'Limite'}</div>
+              <div class="speed-value" id="limit-value">${limit != null ? formatKmh(limit) : '—'}</div>
+              <div class="speed-unit">km/h</div>
+              <div class="dist-line" id="dist-line">
+                ${
+                  dist != null
+                    ? inAlertZone
+                      ? `Radar a ${dist} m`
+                      : `Radar a ${dist} m · alerta em ${state.alertDistanceM} m`
+                    : 'Sem radar próximo'
+                }
+              </div>
+            </div>
+          </div>
+
+          <aside class="upcoming" id="upcoming-list">
+            <div class="upcoming-title">Próximos</div>
+            ${renderUpcoming(upcoming)}
+          </aside>
+        </div>
+      </section>
+
+      <div class="alert-banner live-only ${ring === 'over' ? 'active-imminent' : ring === 'ok' && state.alert ? 'active-far' : ''}">
+        <div class="alert-dot" aria-hidden="true"></div>
+        <div class="alert-copy">
+          ${
+            state.alert
+              ? `<strong>${ring === 'over' ? 'Acima do limite — reduza' : 'No limite ou abaixo'}</strong>
+                 <span>${state.alert.radar.name} · alvo ${state.alert.radar.limitKmh} km/h</span>`
+              : `<strong>Sem radar no alcance de alerta</strong>
+                 <span>${running ? 'Monitorando…' : 'Inicie uma viagem.'}</span>`
+          }
+        </div>
+      </div>
+
+      <div class="controls live-only">
+        <div class="btn-row">
+          <button type="button" class="btn-primary" id="btn-gps" ${running ? 'disabled' : ''}>GPS real</button>
+          <button type="button" class="btn-secondary" id="btn-sim" ${running && state.mode !== 'sim' ? 'disabled' : ''}>Simular no sofá</button>
+        </div>
+
+        <div class="settings-panel open">
+          <label class="email-label" for="destination-input">
+            Destino <em>(opcional)</em>
+          </label>
+          <input
+            type="text"
+            id="destination-input"
+            class="email-input"
+            placeholder="Ex.: Av. Paulista, SP — ou deixe vazio"
+            value="${escapeAttr(state.destinationText)}"
+            autocomplete="street-address"
+          />
+          <div class="btn-row dest-actions">
+            <button type="button" class="btn-secondary" id="btn-plan" ${running || state.planningRoute ? 'disabled' : ''}>
+              ${state.planningRoute ? 'Planejando…' : 'Planejar radares'}
+            </button>
+            <button type="button" class="btn-secondary" id="btn-clear-dest" ${running ? 'disabled' : ''}>Limpar</button>
+            <button type="button" class="btn-secondary" id="btn-waze" ${state.routePlan ? '' : 'disabled'}>Abrir no Waze</button>
+          </div>
+          <p class="route-summary" id="route-summary">
+            ${
+              state.routeSummary
+                ? escapeAttr(state.routeSummary)
+                : 'Sem destino = alerta só perto de você (como hoje). Com destino = prevê os da rota.'
+            }
+          </p>
+          <label>
+            Sirene/voz a partir de
+            <strong id="alert-dist-label">${state.alertDistanceM} m</strong>
+          </label>
+          <input type="range" id="alert-dist" min="100" max="800" step="50" value="${state.alertDistanceM}" />
+          <label class="email-label" for="report-email">
+            E-mail do relatório
+          </label>
+          <input
+            type="email"
+            id="report-email"
+            class="email-input"
+            placeholder="seu@email.com"
+            value="${escapeAttr(getReportEmail())}"
+            autocomplete="email"
+            inputmode="email"
+          />
+          <label class="auto-label">
+            <input type="checkbox" id="auto-start" ${state.autoStart ? 'checked' : ''} />
+            Iniciar sozinho acima de ${AUTO_SPEED_KMH} km/h
+          </label>
+          <p class="hint">
+            Destino é opcional. GPS real = OSM SP. Sofá = demo.
+          </p>
+        </div>
+
+        <div class="btn-row">
+          <button type="button" class="btn-secondary" id="btn-test-sound">Testar voz + sirene</button>
+        </div>
+
+        <div class="sim-panel ${state.mode === 'sim' && !state.report ? 'open' : ''}" id="sim-panel">
+          <label>
+            Vel. simulação
+            <strong id="sim-speed-label">${sim?.getSpeedKmh() ?? 90} km/h</strong>
+          </label>
+          <input type="range" id="sim-speed" min="30" max="120" step="5" value="${sim?.getSpeedKmh() ?? 90}" ${running ? '' : 'disabled'} />
+          <label>
+            Tempo
+            <strong id="sim-scale-label">${sim?.getTimeScale() ?? 4}×</strong>
+          </label>
+          <input type="range" id="sim-scale" min="1" max="10" step="1" value="${sim?.getTimeScale() ?? 4}" ${running ? '' : 'disabled'} />
+        </div>
+
+        <div class="btn-row">
+          <button type="button" class="btn-danger" id="btn-finish" ${running ? '' : 'disabled'}>Finalizar</button>
+        </div>
+      </div>
+
+      <p class="status-line live-only ${state.error ? 'error' : ''}">${state.error ?? state.status}</p>
+
+      <section class="report ${showReport ? 'open' : ''}" aria-live="polite">
+        ${showReport && state.report ? renderReport(state.report) : ''}
+      </section>
+    </div>
+    <div class="toast" id="toast" role="status"></div>
+  `
+
+  bindEvents()
+}
+
+function renderUpcoming(
+  items: Array<{ radar: Radar; distanceM: number }>,
+): string {
+  if (items.length === 0) {
+    return `<div class="upcoming-empty">Nenhum à frente</div>`
+  }
+  return items
+    .map((item, i) => {
+      const d = Number.isFinite(item.distanceM)
+        ? `${Math.round(item.distanceM)} m`
+        : '—'
+      return `
+        <div class="upcoming-item" data-radar="${item.radar.id}">
+          <div class="upcoming-rank">${i + 1}</div>
+          <div class="upcoming-body">
+            <strong>${item.radar.limitKmh}</strong>
+            <span>${item.radar.name.replace(/^Radar\s+/i, '')}</span>
+          </div>
+          <div class="upcoming-dist" data-dist="${item.radar.id}">${d}</div>
+        </div>`
+    })
+    .join('')
+}
+
+function renderReport(report: TripReport): string {
+  const overs = report.overs.length
+  return `
+    <h2>Viagem finalizada</h2>
+    <div class="report-summary">
+      <div class="stat"><em>Duração</em><strong>${formatDuration(report.durationMs)}</strong></div>
+      <div class="stat"><em>Vel. máx</em><strong>${formatKmh(report.maxSpeedKmh)} km/h</strong></div>
+      <div class="stat"><em>Radares</em><strong>${report.passages.length}</strong></div>
+      <div class="stat"><em>Acima do limite</em><strong class="${overs ? 'bad' : 'good'}">${overs}</strong></div>
+    </div>
+    <ul class="passage-list">
+      ${
+        report.passages.length === 0
+          ? `<li><span class="detail">Nenhuma passagem por radar.</span></li>`
+          : report.passages
+              .map(
+                (p) => `
+            <li>
+              <span class="tag ${p.overLimit ? 'bad' : 'ok'}">${p.overLimit ? 'Acima do limite' : 'Dentro do limite'}</span>
+              <span class="title">${p.radar.name}</span>
+              <span class="detail">
+                Limite ${p.radar.limitKmh} · passou a ${formatKmh(p.speedKmh)} km/h
+                ${p.overLimit ? ` (+${formatKmh(p.excessKmh)})` : ''}
+                · ${formatClock(p.passedAt)}
+              </span>
+            </li>`,
+              )
+              .join('')
+      }
+    </ul>
+    <div class="btn-row">
+      <button type="button" class="btn-primary" id="btn-email">Enviar por e-mail</button>
+      <button type="button" class="btn-secondary" id="btn-copy">Copiar relatório</button>
+    </div>
+    <div class="btn-row">
+      <button type="button" class="btn-secondary" id="btn-share">Compartilhar</button>
+      <button type="button" class="btn-primary" id="btn-new">Nova viagem</button>
+    </div>
+  `
+}
+
+function escapeAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function bindEvents(): void {
+  document.getElementById('btn-gps')?.addEventListener('click', startGps)
+  document.getElementById('btn-sim')?.addEventListener('click', startSim)
+  document.getElementById('btn-finish')?.addEventListener('click', finalizeTrip)
+  document.getElementById('btn-new')?.addEventListener('click', resetTrip)
+  document.getElementById('btn-copy')?.addEventListener('click', copyReport)
+  document.getElementById('btn-email')?.addEventListener('click', () => sendReportEmail())
+  document.getElementById('btn-share')?.addEventListener('click', () => {
+    void shareReport()
+  })
+  document.getElementById('btn-test-sound')?.addEventListener('click', () => {
+    void testAlertNow(60).then(() => showToast('Falou: Baixa a velocidade para 60'))
+  })
+  document.getElementById('btn-plan')?.addEventListener('click', () => {
+    void planDestinationFromUi()
+  })
+  document.getElementById('btn-clear-dest')?.addEventListener('click', clearDestination)
+  document.getElementById('btn-waze')?.addEventListener('click', () => {
+    if (state.routePlan) openWazeTo(state.routePlan.destination)
+  })
+
+  const destInput = document.getElementById('destination-input') as HTMLInputElement | null
+  destInput?.addEventListener('input', () => {
+    state.destinationText = destInput.value
+    saveDestinationText(destInput.value)
+  })
+  destInput?.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault()
+      void planDestinationFromUi()
+    }
+  })
+
+  const auto = document.getElementById('auto-start') as HTMLInputElement | null
+  auto?.addEventListener('change', () => {
+    state.autoStart = Boolean(auto.checked)
+    localStorage.setItem(AUTO_KEY, state.autoStart ? '1' : '0')
+    if (state.autoStart) void enableAutoWatch()
+    else stopAutoWatch()
+  })
+
+  const emailInput = document.getElementById('report-email') as HTMLInputElement | null
+  emailInput?.addEventListener('input', () => {
+    setReportEmail(emailInput.value)
+  })
+  emailInput?.addEventListener('change', () => {
+    setReportEmail(emailInput.value)
+  })
+  emailInput?.addEventListener('blur', () => {
+    setReportEmail(emailInput.value)
+  })
+
+  const dist = document.getElementById('alert-dist') as HTMLInputElement | null
+  dist?.addEventListener('input', () => {
+    const v = Number(dist.value)
+    setAlertDistanceM(v)
+    state.alertDistanceM = getAlertDistanceM()
+    const label = document.getElementById('alert-dist-label')
+    if (label) label.textContent = `${state.alertDistanceM} m`
+  })
+
+  const range = document.getElementById('sim-speed') as HTMLInputElement | null
+  range?.addEventListener('input', () => {
+    const v = Number(range.value)
+    sim?.setSpeedKmh(v)
+    const label = document.getElementById('sim-speed-label')
+    if (label) label.textContent = `${v} km/h`
+    syncSimStatus()
+  })
+
+  const scale = document.getElementById('sim-scale') as HTMLInputElement | null
+  scale?.addEventListener('input', () => {
+    const v = Number(scale.value)
+    sim?.setTimeScale(v)
+    const label = document.getElementById('sim-scale-label')
+    if (label) label.textContent = `${v}×`
+    syncSimStatus()
+  })
+}
+
+function syncSimStatus(): void {
+  if (state.mode !== 'sim' || !sim) return
+  state.status = `Simulação · ${sim.getSpeedKmh()} km/h · ${sim.getTimeScale()}×`
+  const statusEl = document.querySelector('.status-line')
+  if (statusEl && !state.error) statusEl.textContent = state.status
+}
+
+function stopEngines(): void {
+  gps?.stop()
+  sim?.stop()
+  gps = null
+  sim = null
+}
+
+function beginTrip(mode: Exclude<TripMode, 'idle'>): void {
+  stopEngines()
+  tracker.reset()
+  state.mode = mode
+  state.startedAt = Date.now()
+  state.samples = []
+  state.passages = []
+  state.lastSample = null
+  state.alert = null
+  state.report = null
+  state.error = null
+  state.status = mode === 'gps' ? 'GPS…' : 'Simulação…'
+  render()
+}
+
+function onSample(sample: PositionSample): void {
+  state.lastSample = sample
+  state.samples.push(sample)
+  if (state.samples.length > 5000) state.samples.shift()
+
+  // GPS real: com rota usa radares da rota; sem destino = janela perto (como hoje)
+  if (state.mode === 'gps' && packReady) {
+    if (state.routePlan) {
+      tracker.setRadars(state.routePlan.radars)
+    } else {
+      const keep = [
+        ...tracker.getPassages().map((p) => p.radar.id),
+        ...(state.alert ? [state.alert.radar.id] : []),
+      ]
+      tracker.setRadars(activeRadarWindow(sample, GPS_RADAR_RADIUS_M, keep))
+    }
+  }
+
+  const { alert, newPassage } = tracker.update(sample)
+  state.alert = alert
+  state.passages = tracker.getPassages()
+
+  updateHud(sample, alert)
+  handleRadarAlertAudio(alert, sample.speedKmh)
+
+  if (newPassage) {
+    if (newPassage.overLimit) {
+      void speakFined()
+      showToast(
+        `${newPassage.radar.name}: ${formatKmh(newPassage.speedKmh)} km/h — Você foi multado`,
+        true,
+      )
+    } else {
+      showToast(`${newPassage.radar.name}: OK`, false)
+    }
+  }
+}
+
+function updateHud(sample: PositionSample, alert: RadarAlert | null): void {
+  const speed = sample.speedKmh
+  const limit = alert?.radar.limitKmh ?? null
+  const dist = alert ? Math.round(alert.distanceM) : null
+  const ring = ringState(speed, alert)
+  const inAlertZone = alert != null && alert.distanceM <= state.alertDistanceM
+
+  const my = document.getElementById('my-speed-value')
+  if (my) my.textContent = formatKmh(speed)
+
+  const limitEl = document.getElementById('limit-value')
+  if (limitEl) limitEl.textContent = limit != null ? formatKmh(limit) : '—'
+
+  const ringEl = document.getElementById('speed-ring')
+  if (ringEl) ringEl.className = `speed-ring ring-${ring}`
+
+  const distEl = document.getElementById('dist-line')
+  if (distEl) {
+    distEl.textContent =
+      dist != null
+        ? inAlertZone
+          ? `Radar a ${dist} m`
+          : `Radar a ${dist} m · alerta em ${state.alertDistanceM} m`
+        : 'Sem radar próximo'
+  }
+
+  const label = document.querySelector('.limit-label')
+  if (label) label.textContent = limit != null ? 'Baixe para' : 'Limite'
+
+  const banner = document.querySelector('.alert-banner')
+  if (banner) {
+    banner.className = `alert-banner live-only ${
+      ring === 'over' ? 'active-imminent' : ring === 'ok' && alert ? 'active-far' : ''
+    }`
+    const copy = banner.querySelector('.alert-copy')
+    if (copy) {
+      copy.innerHTML = alert
+        ? `<strong>${ring === 'over' ? 'Acima do limite — reduza' : 'No limite ou abaixo'}</strong>
+           <span>${alert.radar.name} · alvo ${alert.radar.limitKmh} km/h</span>`
+        : `<strong>Sem radar no alcance de alerta</strong>
+           <span>Monitorando…</span>`
+    }
+  }
+
+  const list = document.getElementById('upcoming-list')
+  if (list) {
+    const upcoming = state.routePlan
+      ? upcomingOnRoute(state.routePlan, sample, 3)
+      : tracker.upcoming(sample, 3)
+    list.innerHTML = `<div class="upcoming-title">Próximos</div>${renderUpcoming(upcoming)}`
+  }
+}
+
+function persistEmailFromDom(): void {
+  const emailInput = document.getElementById('report-email') as HTMLInputElement | null
+  if (emailInput) setReportEmail(emailInput.value)
+}
+
+function persistDestinationFromDom(): void {
+  const dest = document.getElementById('destination-input') as HTMLInputElement | null
+  if (dest) {
+    state.destinationText = dest.value
+    saveDestinationText(dest.value)
+  }
+}
+
+function clearDestination(): void {
+  state.destinationText = ''
+  state.routePlan = null
+  state.routeSummary = ''
+  saveDestinationText('')
+  showToast('Destino limpo — modo perto de você')
+  render()
+}
+
+function getOriginForPlan(): Promise<{ lat: number; lng: number }> {
+  return new Promise((resolve, reject) => {
+    if (state.lastSample) {
+      resolve({ lat: state.lastSample.lat, lng: state.lastSample.lng })
+      return
+    }
+    if (!('geolocation' in navigator)) {
+      reject(new Error('Sem GPS para origem da rota'))
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) =>
+        resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => reject(new Error('Permita a localização para planejar a rota')),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 5000 },
+    )
+  })
+}
+
+async function planDestinationFromUi(): Promise<void> {
+  persistDestinationFromDom()
+  const q = state.destinationText.trim()
+  if (!q) {
+    showToast('Destino vazio — o app segue só com radares perto de você')
+    return
+  }
+  if (!packReady) {
+    try {
+      await loadSaoPauloRadarPack()
+      state.packCount = getPackMeta().count
+      packReady = true
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Falha ao carregar radares', true)
+      return
+    }
+  }
+
+  state.planningRoute = true
+  render()
+  try {
+    const from = await getOriginForPlan()
+    const plan = await planRouteToDestination({
+      from,
+      destinationQuery: q,
+    })
+    state.routePlan = plan
+    state.routeSummary = formatRouteSummary(plan)
+    state.status = state.routeSummary
+    showToast(state.routeSummary)
+    void speakDynamic(
+      `Rota com ${plan.radars.length} radares. Destino ${plan.destinationLabel.split(',')[0]}.`,
+    )
+  } catch (e) {
+    state.routePlan = null
+    state.routeSummary = ''
+    showToast(e instanceof Error ? e.message : 'Falha ao planejar', true)
+  } finally {
+    state.planningRoute = false
+    render()
+  }
+}
+
+async function startGps(): Promise<void> {
+  persistEmailFromDom()
+  persistDestinationFromDom()
+  stopAutoWatch()
+  resetAlertAudio()
+  await armVoiceOnUserGesture()
+
+  if (!packReady) {
+    try {
+      await loadSaoPauloRadarPack()
+      state.packCount = getPackMeta().count
+      packReady = true
+    } catch (e) {
+      state.error = e instanceof Error ? e.message : 'Falha ao carregar radares'
+      render()
+      return
+    }
+  }
+
+  // Destino opcional: se tiver texto e ainda não planejou, tenta planejar;
+  // se falhar ou estiver vazio, segue no modo “perto de você”.
+  const destQ = state.destinationText.trim()
+  if (destQ && !state.routePlan) {
+    state.planningRoute = true
+    state.status = 'Planejando rota (opcional)…'
+    render()
+    try {
+      const from = await getOriginForPlan()
+      const plan = await planRouteToDestination({
+        from,
+        destinationQuery: destQ,
+      })
+      state.routePlan = plan
+      state.routeSummary = formatRouteSummary(plan)
+    } catch (e) {
+      showToast(
+        (e instanceof Error ? e.message : 'Rota falhou') +
+          ' — seguindo sem destino',
+        true,
+      )
+      state.routePlan = null
+      state.routeSummary = ''
+    } finally {
+      state.planningRoute = false
+    }
+  }
+
+  beginTrip('gps')
+  if (state.routePlan) {
+    tracker.setRadars(state.routePlan.radars)
+    state.status = `Navegação · ${formatRouteSummary(state.routePlan)}`
+    void speakDynamic(
+      `Navegação iniciada. ${state.routePlan.radars.length} radares na rota.`,
+    )
+    showToast(state.status)
+  } else {
+    tracker.setRadars([])
+    state.status = `Navegação · radares perto de você · pack ${state.packCount}`
+    void speakDynamic(
+      `Navegação iniciada. Monitorando radares próximos.`,
+    )
+    showToast(state.status)
+  }
+
+  gps = new GpsEngine({
+    onSample,
+    onError: (message) => {
+      state.error = message
+      state.status = message
+      const el = document.querySelector('.status-line')
+      if (el) {
+        el.classList.add('error')
+        el.textContent = message
+      }
+    },
+    onStatus: (message) => {
+      const extra = state.routePlan
+        ? formatRouteSummary(state.routePlan)
+        : `${state.packCount} radares OSM`
+      state.status = `${message} · ${extra}`
+      state.error = null
+      const el = document.querySelector('.status-line')
+      if (el) {
+        el.classList.remove('error')
+        el.textContent = state.status
+      }
+    },
+  })
+  gps.start()
+}
+
+async function startSim(): Promise<void> {
+  persistEmailFromDom()
+  stopAutoWatch()
+  resetAlertAudio()
+  await armVoiceOnUserGesture()
+  stopEngines()
+  tracker.reset()
+  tracker.setRadars(RADARS)
+  state.mode = 'sim'
+  state.startedAt = Date.now()
+  state.samples = []
+  state.passages = []
+  state.lastSample = null
+  state.alert = null
+  state.report = null
+  state.error = null
+  state.status = `Simulação (demo) · ${RADARS.length} radares fictícios`
+  void speakDynamic('Simulação no sofá. Radares de demonstração.')
+  sim = new SimEngine({
+    onSample,
+    onStatus: (message) => {
+      state.status = message
+      const el = document.querySelector('.status-line')
+      if (el && !state.error) el.textContent = message
+    },
+    onFinished: () => {
+      state.status = 'Fim do trecho — Finalizar'
+      const el = document.querySelector('.status-line')
+      if (el) el.textContent = state.status
+    },
+  })
+  sim.setSpeedKmh(90)
+  sim.setTimeScale(4)
+  render()
+  sim.start()
+}
+
+function stopAutoWatch(): void {
+  autoWatcher?.stop()
+  autoWatcher = null
+  state.watchingAuto = false
+  autoAboveSince = null
+}
+
+async function enableAutoWatch(): Promise<void> {
+  if (state.mode !== 'idle' || state.report) return
+  if (autoWatcher) return
+  if (!packReady) {
+    try {
+      await loadSaoPauloRadarPack()
+      state.packCount = getPackMeta().count
+      packReady = true
+    } catch {
+      showToast('Não deu para carregar radares para o auto-início', true)
+      return
+    }
+  }
+  state.watchingAuto = true
+  state.status = `Auto: esperando >${AUTO_SPEED_KMH} km/h…`
+  render()
+  autoWatcher = new GpsEngine({
+    onSample: (sample) => {
+      state.lastSample = sample
+      const my = document.getElementById('my-speed-value')
+      if (my) my.textContent = formatKmh(sample.speedKmh)
+      if (sample.speedKmh >= AUTO_SPEED_KMH) {
+        if (autoAboveSince == null) autoAboveSince = Date.now()
+        // 3 s acima de 30 km/h → inicia (evita falso positivo parado)
+        if (Date.now() - autoAboveSince >= 3000 && state.mode === 'idle') {
+          stopAutoWatch()
+          void startGps()
+        }
+      } else {
+        autoAboveSince = null
+      }
+    },
+    onError: (message) => {
+      state.error = message
+      showToast(message, true)
+    },
+    onStatus: (message) => {
+      state.status = `Auto · ${message}`
+      const el = document.querySelector('.status-line')
+      if (el && !state.error) el.textContent = state.status
+    },
+  })
+  autoWatcher.start()
+}
+
+function finalizeTrip(): void {
+  if (state.mode === 'idle' || !state.startedAt) return
+
+  // Salva e-mail digitado antes de re-render (campo some no relatório)
+  persistEmailFromDom()
+
+  stopEngines()
+  resetAlertAudio()
+  stopVoiceKeepAlive()
+  if (state.lastSample) {
+    tracker.update({
+      ...state.lastSample,
+      lat: state.lastSample.lat + 1,
+      lng: state.lastSample.lng + 1,
+      at: Date.now(),
+    })
+  }
+  const endedAt = Date.now()
+  state.report = buildReport({
+    mode: state.mode === 'sim' ? 'sim' : 'gps',
+    startedAt: state.startedAt,
+    endedAt,
+    samples: state.samples,
+    passages: tracker.getPassages(),
+  })
+  state.mode = 'idle'
+  state.status = 'Relatório pronto.'
+  state.alert = null
+  render()
+
+  // No mesmo gesto do toque em Finalizar — abre o Mail com o relatório
+  sendReportEmail({ auto: true })
+}
+
+function sendReportEmail(opts: { auto?: boolean } = {}): void {
+  if (!state.report) return
+  const email = getReportEmail()
+  if (!email) {
+    showToast(
+      opts.auto
+        ? 'Informe o e-mail nas configurações para enviar o relatório'
+        : 'Informe o e-mail antes de enviar',
+      true,
+    )
+    return
+  }
+  if (!isValidEmail(email)) {
+    showToast('E-mail inválido', true)
+    return
+  }
+  const ok = openReportEmail(state.report)
+  if (ok) {
+    showToast(opts.auto ? 'Abrindo Mail com o relatório…' : 'Abrindo Mail…')
+  } else {
+    showToast('Não foi possível abrir o Mail', true)
+  }
+}
+
+async function shareReport(): Promise<void> {
+  if (!state.report) return
+  const result = await shareOrEmailReport(state.report)
+  if (result === 'share') showToast('Compartilhado')
+  else if (result === 'mailto') showToast('Abrindo Mail…')
+  else showToast('Não foi possível compartilhar', true)
+}
+
+function resetTrip(): void {
+  stopEngines()
+  resetAlertAudio()
+  stopVoiceKeepAlive()
+  tracker.reset()
+  state.mode = 'idle'
+  state.startedAt = null
+  state.samples = []
+  state.passages = []
+  state.lastSample = null
+  state.alert = null
+  state.report = null
+  state.error = null
+  state.status = 'Escolha GPS real ou Simular no sofá.'
+  render()
+}
+
+async function copyReport(): Promise<void> {
+  if (!state.report) return
+  try {
+    await navigator.clipboard.writeText(reportToText(state.report))
+    showToast('Relatório copiado')
+  } catch {
+    showToast('Não foi possível copiar', true)
+  }
+}
+
+function showToast(message: string, bad = false): void {
+  const toast = document.getElementById('toast')
+  if (!toast) return
+  toast.textContent = message
+  toast.className = `toast show${bad ? ' bad' : ''}`
+  window.setTimeout(() => toast.classList.remove('show'), 2600)
+}
+
+async function boot(): Promise<void> {
+  render()
+  try {
+    await loadSaoPauloRadarPack()
+    state.packCount = getPackMeta().count
+    packReady = true
+    state.status = `${state.packCount} radares OSM em SP · GPS real ou Simular`
+  } catch (e) {
+    state.error =
+      e instanceof Error
+        ? e.message
+        : 'Não carregou o pack de radares. Sofá ainda funciona.'
+    state.status = 'Pack OSM indisponível — use Simular no sofá'
+  }
+  render()
+  if (state.autoStart) void enableAutoWatch()
+}
+
+void boot()

@@ -1,0 +1,21 @@
+{
+  "name": "demo-sp-consolacao-sumare",
+  "description": "Trajeto simulado SP para testes offline do TripSimulator",
+  "points": [
+    { "timestamp": "2026-09-08T14:00:00.000Z", "lat": -23.5614, "lng": -46.6558, "speedKmh": 45, "heading": 70 },
+    { "timestamp": "2026-09-08T14:00:20.000Z", "lat": -23.5602, "lng": -46.6525, "speedKmh": 52, "heading": 72 },
+    { "timestamp": "2026-09-08T14:00:40.000Z", "lat": -23.5588, "lng": -46.6491, "speedKmh": 58, "heading": 74 },
+    { "timestamp": "2026-09-08T14:01:00.000Z", "lat": -23.5571, "lng": -46.6458, "speedKmh": 55, "heading": 75 },
+    { "timestamp": "2026-09-08T14:01:20.000Z", "lat": -23.5554, "lng": -46.6426, "speedKmh": 62, "heading": 76 },
+    { "timestamp": "2026-09-08T14:01:40.000Z", "lat": -23.5539, "lng": -46.6395, "speedKmh": 48, "heading": 78 },
+    { "timestamp": "2026-09-08T14:02:00.000Z", "lat": -23.5526, "lng": -46.6362, "speedKmh": 70, "heading": 80 },
+    { "timestamp": "2026-09-08T14:02:20.000Z", "lat": -23.5514, "lng": -46.6328, "speedKmh": 68, "heading": 82 },
+    { "timestamp": "2026-09-08T14:02:40.000Z", "lat": -23.5505, "lng": -46.6291, "speedKmh": 75, "heading": 85 },
+    { "timestamp": "2026-09-08T14:03:00.000Z", "lat": -23.5499, "lng": -46.6254, "speedKmh": 88, "heading": 88 },
+    { "timestamp": "2026-09-08T14:03:20.000Z", "lat": -23.5496, "lng": -46.6216, "speedKmh": 92, "heading": 90 },
+    { "timestamp": "2026-09-08T14:03:40.000Z", "lat": -23.5498, "lng": -46.6179, "speedKmh": 85, "heading": 95 },
+    { "timestamp": "2026-09-08T14:04:00.000Z", "lat": -23.5504, "lng": -46.6143, "speedKmh": 60, "heading": 100 },
+    { "timestamp": "2026-09-08T14:04:20.000Z", "lat": -23.5515, "lng": -46.6109, "speedKmh": 55, "heading": 110 },
+    { "timestamp": "2026-09-08T14:04:40.000Z", "lat": -23.553, "lng": -46.6078, "speedKmh": 50, "heading": 120 }
+  ]
+}

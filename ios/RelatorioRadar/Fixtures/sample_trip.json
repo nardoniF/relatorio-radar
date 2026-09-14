@@ -1,0 +1,63 @@
+{
+  "name": "Demo Consolação → Sumaré",
+  "speedKmh": 55,
+  "path": [
+    { "latitude": -23.5614, "longitude": -46.6558 },
+    { "latitude": -23.5602, "longitude": -46.6525 },
+    { "latitude": -23.5588, "longitude": -46.6491 },
+    { "latitude": -23.5571, "longitude": -46.6458 },
+    { "latitude": -23.5554, "longitude": -46.6426 },
+    { "latitude": -23.5539, "longitude": -46.6395 },
+    { "latitude": -23.5526, "longitude": -46.6362 },
+    { "latitude": -23.5514, "longitude": -46.6328 },
+    { "latitude": -23.5505, "longitude": -46.6291 },
+    { "latitude": -23.5499, "longitude": -46.6254 },
+    { "latitude": -23.5496, "longitude": -46.6216 },
+    { "latitude": -23.5498, "longitude": -46.6179 },
+    { "latitude": -23.5504, "longitude": -46.6143 },
+    { "latitude": -23.5515, "longitude": -46.6109 },
+    { "latitude": -23.553, "longitude": -46.6078 }
+  ],
+  "radars": [
+    {
+      "id": "r1",
+      "name": "Radar Consolação",
+      "coordinate": { "latitude": -23.5595, "longitude": -46.6508 },
+      "limitKmh": 50,
+      "enforcementHeadingDeg": 70,
+      "directionKind": "forward"
+    },
+    {
+      "id": "r2",
+      "name": "Radar Augusta",
+      "coordinate": { "latitude": -23.5558, "longitude": -46.6435 },
+      "limitKmh": 50,
+      "enforcementHeadingDeg": 70,
+      "directionKind": "forward"
+    },
+    {
+      "id": "r3",
+      "name": "Radar Higienópolis",
+      "coordinate": { "latitude": -23.5518, "longitude": -46.6345 },
+      "limitKmh": 40,
+      "enforcementHeadingDeg": 75,
+      "directionKind": "forward"
+    },
+    {
+      "id": "r4",
+      "name": "Radar Pacaembu",
+      "coordinate": { "latitude": -23.5497, "longitude": -46.6235 },
+      "limitKmh": 60,
+      "enforcementHeadingDeg": 90,
+      "directionKind": "forward"
+    },
+    {
+      "id": "r5",
+      "name": "Radar Sumaré",
+      "coordinate": { "latitude": -23.5508, "longitude": -46.6125 },
+      "limitKmh": 50,
+      "enforcementHeadingDeg": 100,
+      "directionKind": "forward"
+    }
+  ]
+}
